@@ -197,9 +197,9 @@ def robust_json_parse(raw):
 # Free models to try in order — if one is rate-limited, next is used
 FREE_MODELS = [
     "meta-llama/llama-3.3-70b-instruct:free",
-    "meta-llama/llama-4-scout:free",
     "deepseek/deepseek-chat-v3-0324:free",
     "mistralai/mistral-small-3.1-24b-instruct:free",
+    "deepseek/deepseek-r1-zero:free",
 ]
 
 def call_api(file_data, system_prompt):
