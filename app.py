@@ -194,24 +194,53 @@ def robust_json_parse(raw):
             raise ValueError(f"Could not parse JSON: {e}")
     raise ValueError("No valid JSON in response")
 
+# Free models to try in order — if one is rate-limited, next is used
+FREE_MODELS = [
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "google/gemini-2.0-flash-exp:free",
+    "qwen/qwen-2.5-72b-instruct:free",
+    "mistralai/mistral-7b-instruct:free",
+]
+
 def call_api(file_data, system_prompt):
-    """OpenRouter — Llama 3.3 70B free, 131k context, full quality."""
+    """OpenRouter with auto-retry and model fallback for rate limits."""
     api_key=get_api_key()
     if not api_key: st.error("⚠️ No OpenRouter API key found."); st.stop()
 
     client=OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
-
     prompt=(f"B.Tech Project Report ({file_data['name']}, ~{file_data.get('pages','?')} pages):\n\n"
             f"{file_data['text']}\n\nReview against SSIPMT guidelines. Return only the JSON.")
 
-    response=client.chat.completions.create(
-        model="meta-llama/llama-3.3-70b-instruct:free",
-        messages=[{"role":"system","content":system_prompt},
-                  {"role":"user","content":prompt}],
-        temperature=0.1, max_tokens=4096,
-    )
-    raw=response.choices[0].message.content
-    return robust_json_parse(raw)
+    last_error = None
+    for model in FREE_MODELS:
+        for attempt in range(2):   # 2 tries per model before moving on
+            try:
+                response=client.chat.completions.create(
+                    model=model,
+                    messages=[{"role":"system","content":system_prompt},
+                              {"role":"user","content":prompt}],
+                    temperature=0.1, max_tokens=4096,
+                )
+                raw=response.choices[0].message.content
+                return robust_json_parse(raw)
+
+            except Exception as e:
+                last_error = e
+                err_str = str(e)
+                if "429" in err_str or "rate" in err_str.lower() or "temporarily" in err_str.lower():
+                    if attempt == 0:
+                        # Wait and retry same model once
+                        st.toast(f"⏳ Rate limit on {model.split('/')[-1]} — waiting 35s then retrying...")
+                        time.sleep(35)
+                        continue
+                    else:
+                        # Move to next model
+                        st.toast(f"⚠️ Switching to next available model...")
+                        break
+                else:
+                    raise e  # Non-rate-limit error — raise immediately
+
+    raise last_error or Exception("All free models are currently rate-limited. Please wait a minute and try again.")
 
 def show_review(rv):
     ws=compute_weighted_score(rv); rec=override_recommendation(ws)
