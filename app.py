@@ -2,12 +2,12 @@
 SSIPMT B.Tech Project Thesis Report Reviewer
 Department of Information Technology, SSIPMT Raipur
 Developed by Sunil Kumar Dewangan
-Powered by OpenRouter API (Llama 3.3 70B) — 100% FREE, 131k context
-Get free API key at: https://openrouter.ai/keys
+Powered by Groq API — 100% FREE
+Get free API key at: https://console.groq.com
 """
 
 import streamlit as st
-from openai import OpenAI
+from groq import Groq
 import json
 import io
 import os
@@ -21,8 +21,11 @@ from pdf_generator import generate_full_report, generate_report_card, generate_c
 
 load_dotenv()
 
-MAX_PAGES = 80
+MAX_PAGES = 80  # SSIPMT guidelines: 40-80 pages
 
+# ─────────────────────────────────────────────
+# PAGE CONFIG — No Sidebar
+# ─────────────────────────────────────────────
 st.set_page_config(page_title="SSIPMT Thesis Reviewer", page_icon="🎓",
                    layout="wide", initial_sidebar_state="collapsed")
 
@@ -34,17 +37,26 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ─────────────────────────────────────────────
+# HEADER
+# ─────────────────────────────────────────────
 st.markdown("""
 <div style='text-align:center; padding:18px 0 10px 0;'>
   <span style='font-size:36px;'>🎓</span>
-  <h2 style='margin:4px 0 2px 0; color:#1e3a8a; font-size:26px;'>SSIPMT Project Thesis Report Reviewer</h2>
-  <p style='margin:0; color:#6b7280; font-size:13px;'>
-    Department of Information Technology &nbsp;|&nbsp; Developed by <strong>Sunil Kumar Dewangan</strong>
+  <h2 style='margin:4px 0 2px 0; color:#1e3a8a; font-size:26px;'>
+    SSIPMT Project Thesis Report Reviewer
+  </h2>
+  <p style='margin:0; color:#6b7280; font-size:25px;'>
+    Department of Information Technology &nbsp;|&nbsp;
+    Developed by <strong>Sunil Dewangan</strong>
   </p>
 </div>
 <hr style='border:none; border-top:2px solid #e5e7eb; margin-bottom:18px;'/>
 """, unsafe_allow_html=True)
 
+# ─────────────────────────────────────────────
+# GUIDELINES
+# ─────────────────────────────────────────────
 GUIDELINES = """
 SSIPMT B.Tech Project Report Guidelines — Dept. of IT
 
@@ -75,21 +87,59 @@ GENERAL: No first-person (no I/we/our/my), no placeholder text, min 2 pages per 
 """
 
 def build_system_prompt(session, sub_name, sub_code, semester, fulfillment):
-    return f"""You are a strict, thorough, and fair B.Tech project report reviewer for SSIPMT Raipur, Dept. of IT.
+    return f"""You are an extremely strict B.Tech project report EXAMINER for SSIPMT Raipur, Dept. of IT.
+Your job is to FIND FAILURES and DEFICIENCIES — do not be generous or give benefit of the doubt.
 
-Review context:
-- Session: {session}
-- Subject: {sub_name} (Code: {sub_code})
-- Semester: {semester}
-- Degree: {fulfillment}
+Review context: Session={session}, Subject={sub_name} ({sub_code}), Semester={semester}, {fulfillment}
 
 Official SSIPMT Guidelines:
-{GUIDELINES}
+""" + GUIDELINES + f"""
 
-Be specific — cite actual content when identifying issues. Be thorough but fair.
+======= MANDATORY STRICT SCORING RULES =======
 
-Return ONLY valid JSON, no markdown, no backticks, no text outside JSON:
-{{"project_title":"string","report_type":"string","student_names":["array"],"guide_name":"string","overall_score":number,"overall_recommendation":"APPROVED or MINOR_REVISION or MAJOR_REVISION or REJECTED","executive_summary":"3-4 sentences","format_compliance":{{"score":number,"checks":[{{"item":"string","status":"PASS or FAIL or WARNING or CANNOT_VERIFY","detail":"string"}}]}},"front_matter":{{"score":number,"sections":[{{"name":"string","present":true,"issues":"string or null"}}]}},"chapters":[{{"number":number,"title":"string","present":true,"estimated_pages":number,"meets_2page_minimum":true,"score":number,"issues":["array"],"strengths":["array"],"feedback":"string"}}],"technical_elements":{{"score":number,"dfd_level0":{{"present":true,"issues":"null"}},"dfd_level1":{{"present":true,"issues":"null"}},"dfd_level2":{{"present":true,"issues":"null"}},"er_diagram":{{"present":true,"issues":"null"}},"table_structures":{{"present":true,"count":number,"issues":"null"}},"algorithms":{{"present":true,"count":number,"properly_formatted":true,"issues":"null"}},"waterfall_diagram":{{"present":true,"issues":"null"}},"testing_types":{{"count":number,"types_found":["array"],"issues":"null"}}}},"abstract":{{"score":number,"estimated_word_count":number,"within_300_500":true,"has_keywords":true,"keyword_count":number,"covers_problem":true,"covers_solution":true,"covers_technologies":true,"covers_results":true,"has_citations":false,"issues":["array"],"feedback":"string"}},"references":{{"score":number,"total_count":number,"meets_minimum_15":true,"peer_reviewed_count":number,"meets_10_peer_reviewed":true,"ieee_format":"FULL or PARTIAL or POOR","issues":["array"],"feedback":"string"}},"language_quality":{{"score":number,"first_person_violations":["array"],"grammar_quality":"POOR or FAIR or GOOD or EXCELLENT","technical_accuracy":"POOR or FAIR or GOOD or EXCELLENT","academic_tone":"POOR or FAIR or GOOD or EXCELLENT","placeholder_text_found":false,"feedback":"string"}},"critical_issues":["array"],"major_issues":["array"],"minor_issues":["array"],"strengths":["array"],"priority_action_list":[{{"priority":number,"action":"string","location":"string","severity":"CRITICAL or MAJOR or MINOR"}}]}}"""
+RULE 1 — DIAGRAMS ARE INVISIBLE TO YOU (CRITICAL):
+You are reviewing EXTRACTED TEXT only. DFDs, ER diagrams, flowcharts, waterfall diagrams are IMAGES — you cannot see them.
+- A figure caption alone (e.g. "Fig 5.1: DFD Level 0") is NOT sufficient to mark present=true
+- To credit a DFD as present: text must describe entities, processes, data flows in prose
+- To credit ER diagram: entity names, attributes, relationships must appear in text
+- To credit Waterfall: phases must be listed and explained in text
+- DEFAULT all diagram fields to present=false unless text clearly proves otherwise
+- Issue text: "Only caption found — diagram content not verifiable from text extraction"
+
+RULE 2 — CHAPTER DEPTH from visible word count (250 words ≈ 1 page):
+- < 150 words visible → score 0–15, meets_2page_minimum=false
+- 150–350 words → score 15–35, meets_2page_minimum=false
+- 350–500 words → score 35–55, meets_2page_minimum=true (marginal)
+- 500–800 words with good content → score 55–75
+- > 800 words with high quality → score 75–100
+Short chapter text = thin/inadequate content.
+
+RULE 3 — FAIL BY DEFAULT:
+- No clear evidence = FAIL (not CANNOT_VERIFY)
+- Partial evidence = WARNING only
+- PASS only when complete, correct content is clearly present
+- CANNOT_VERIFY must LOWER the score, not keep it neutral
+
+RULE 4 — COUNT REFERENCES:
+Count [1] [2] [3] style citations visible in text.
+- Fewer than 15 found → meets_minimum_15=false, references score ≤ 30
+- Fewer than 10 journal/conference → meets_10_peer_reviewed=false
+- Missing volume/pages/DOI → ieee_format=POOR
+
+RULE 5 — FIRST PERSON:
+Search for: "I ", "I've", "we ", "we've", "our ", "my "
+Any occurrence = violation. List exact quotes found.
+
+RULE 6 — OVERALL SCORE (score LOWER when uncertain):
+- 95–100: ALL requirements met at exceptional quality — extremely rare
+- 75–94: Most requirements met, only minor gaps
+- 50–74: Multiple thin chapters, diagrams unverifiable, reference gaps
+- 25–49: Several missing chapters, major structural problems
+- 0–24: Critical failures throughout
+
+Return ONLY valid JSON, no markdown, no backticks:
+{{"project_title":"string","report_type":"string","student_names":["array"],"guide_name":"string","overall_score":number,"overall_recommendation":"APPROVED or MINOR_REVISION or MAJOR_REVISION or REJECTED","executive_summary":"3-4 sentences citing specific failures","format_compliance":{{"score":number,"checks":[{{"item":"string","status":"PASS or FAIL or WARNING or CANNOT_VERIFY","detail":"string"}}]}},"front_matter":{{"score":number,"sections":[{{"name":"string","present":true,"issues":"string or null"}}]}},"chapters":[{{"number":number,"title":"string","present":true,"estimated_pages":number,"meets_2page_minimum":true,"score":number,"issues":["array"],"strengths":["array"],"feedback":"string"}}],"technical_elements":{{"score":number,"dfd_level0":{{"present":true,"issues":"null"}},"dfd_level1":{{"present":true,"issues":"null"}},"dfd_level2":{{"present":true,"issues":"null"}},"er_diagram":{{"present":true,"issues":"null"}},"table_structures":{{"present":true,"count":number,"issues":"null"}},"algorithms":{{"present":true,"count":number,"properly_formatted":true,"issues":"null"}},"waterfall_diagram":{{"present":true,"issues":"null"}},"testing_types":{{"count":number,"types_found":["array"],"issues":"null"}}}},"abstract":{{"score":number,"estimated_word_count":number,"within_300_500":true,"has_keywords":true,"keyword_count":number,"covers_problem":true,"covers_solution":true,"covers_technologies":true,"covers_results":true,"has_citations":false,"issues":["array"],"feedback":"string"}},"references":{{"score":number,"total_count":number,"meets_minimum_15":true,"peer_reviewed_count":number,"meets_10_peer_reviewed":true,"ieee_format":"FULL or PARTIAL or POOR","issues":["array"],"feedback":"string"}},"language_quality":{{"score":number,"first_person_violations":["array"],"grammar_quality":"POOR or FAIR or GOOD or EXCELLENT","technical_accuracy":"POOR or FAIR or GOOD or EXCELLENT","academic_tone":"POOR or FAIR or GOOD or EXCELLENT","placeholder_text_found":false,"feedback":"string"}},"critical_issues":["array of serious failures"],"major_issues":["array"],"minor_issues":["array"],"strengths":["array"],"priority_action_list":[{{"priority":number,"action":"string","location":"string","severity":"CRITICAL or MAJOR or MINOR"}}]}}"""
+
 
 DEFAULT_WEIGHTS = {"format":15,"front_matter":10,"chapters":25,"technical":20,"abstract":5,"references":15,"language":10}
 WEIGHT_INFO = {"format":"Format","front_matter":"Front Matter","chapters":"Chapters",
@@ -99,12 +149,15 @@ SESSIONS = ["2025-26","2024-25","2026-27","2027-28","2023-24"]
 for k,v in {"weights":dict(DEFAULT_WEIGHTS),"single_review":None,"batch_results":[]}.items():
     if k not in st.session_state: st.session_state[k]=v
 
+# ─────────────────────────────────────────────
+# HELPERS
+# ─────────────────────────────────────────────
 def get_api_key():
-    raw = os.getenv("OPENROUTER_API_KEY","")
+    raw = os.getenv("GROQ_API_KEY","")
     if not raw:
-        try: raw = st.secrets.get("OPENROUTER_API_KEY","")
+        try: raw = st.secrets.get("GROQ_API_KEY","")
         except: pass
-    if not raw: raw = st.session_state.get("or_key","")
+    if not raw: raw = st.session_state.get("groq_key","")
     return raw.strip().strip("\"'") if raw else ""
 
 def score_emoji(s): return "🟢" if s>=80 else ("🟡" if s>=60 else "🔴")
@@ -130,15 +183,21 @@ def compute_weighted_score(review):
     return round(sum(dim[k]*(wt[k]/total) for k in wt))
 
 def override_recommendation(weighted_score):
-    if weighted_score >= 95: return "APPROVED"
-    elif weighted_score >= 75: return "MINOR_REVISION"
-    elif weighted_score >= 40: return "MAJOR_REVISION"
-    else: return "REJECTED"
+    """Override AI recommendation based on weighted score thresholds."""
+    if weighted_score >= 95:
+        return "APPROVED"
+    elif weighted_score >= 75:
+        return "MINOR_REVISION"
+    elif weighted_score >= 40:
+        return "MAJOR_REVISION"
+    else:
+        return "REJECTED"
 
 def count_pdf_pages(pdf_bytes):
     doc=fitz.open(stream=pdf_bytes,filetype="pdf"); n=len(doc); doc.close(); return n
 
-def extract_text_from_pdf(pdf_bytes, max_chars=30000):
+def extract_text_from_pdf(pdf_bytes, max_chars=25000):
+    """Extract text — front-heavy (75% front, 25% back) to capture structure + references."""
     doc=fitz.open(stream=pdf_bytes,filetype="pdf"); total=len(doc)
     front_end=int(total*0.75)
     front_text="".join(doc[i].get_text() for i in range(front_end))
@@ -151,29 +210,34 @@ def extract_text_from_pdf(pdf_bytes, max_chars=30000):
     return result.strip()
 
 def extract_file(uploaded_file):
+    """Extract text from PDF or DOCX. Checks page limit."""
     name=uploaded_file.name.lower(); raw=uploaded_file.read()
     if name.endswith(".pdf"):
         pages=count_pdf_pages(raw)
         if pages>MAX_PAGES:
-            raise ValueError(f"This report has **{pages} pages**. Maximum allowed is **{MAX_PAGES} pages** (SSIPMT guideline: 40-80 pages). Please reduce the report size and re-upload.")
+            raise ValueError(f"This report has **{pages} pages**. Maximum allowed is **{MAX_PAGES} pages** (SSIPMT guideline: 40–80 pages). Please reduce the report size and re-upload.")
         text=extract_text_from_pdf(raw)
         if not text.strip():
-            raise ValueError("Could not extract text. PDF may be scanned. Try DOCX format.")
+            raise ValueError("Could not extract text. PDF may be scanned/image-based. Convert to DOCX and try again.")
         return {"text":text,"name":uploaded_file.name,"pages":pages}
     elif name.endswith(".docx"):
+        # FIX: pass BytesIO directly (not as dict) to avoid 'seek' error
         result=mammoth.extract_raw_text(io.BytesIO(raw))
         text=result.value
         if not text.strip(): raise ValueError("Could not extract text from DOCX.")
         est_pages=len(text.split())//300
         if est_pages>MAX_PAGES:
             raise ValueError(f"Document estimated at ~{est_pages} pages. Maximum is {MAX_PAGES} pages.")
-        return {"text":text[:30000],"name":uploaded_file.name,"pages":est_pages}
+        return {"text":text[:25000],"name":uploaded_file.name,"pages":est_pages}
     raise ValueError("Upload PDF or DOCX only.")
 
 def robust_json_parse(raw):
-    clean=raw.replace("```json","").replace("```","").strip()
-    start=clean.find("{")
-    if start<0: raise ValueError("No JSON found in response")
+    """Robustly extract JSON even if response is truncated."""
+    clean = raw.replace("```json","").replace("```","").strip()
+    start = clean.find("{")
+    if start < 0:
+        raise ValueError("No JSON found in response")
+    # Walk to find matching closing brace
     depth=0; end_pos=-1; in_str=False; esc=False
     for i,ch in enumerate(clean[start:],start):
         if esc: esc=False; continue
@@ -187,6 +251,7 @@ def robust_json_parse(raw):
     if end_pos>start:
         try: return json.loads(clean[start:end_pos])
         except: pass
+    # Fallback: try rfind
     end_pos=clean.rfind("}")+1
     if start>=0 and end_pos>start:
         try: return json.loads(clean[start:end_pos])
@@ -194,56 +259,30 @@ def robust_json_parse(raw):
             raise ValueError(f"Could not parse JSON: {e}")
     raise ValueError("No valid JSON in response")
 
-# Free models to try in order — if one is rate-limited, next is used
-FREE_MODELS = [
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "deepseek/deepseek-chat-v3-0324:free",
-    "mistralai/mistral-small-3.1-24b-instruct:free",
-    "deepseek/deepseek-r1-zero:free",
-]
-
-def call_api(file_data, system_prompt):
-    """OpenRouter with auto-retry and model fallback for rate limits."""
+def call_groq(file_data, system_prompt):
+    """Send extracted text to Groq and get JSON review."""
     api_key=get_api_key()
-    if not api_key: st.error("⚠️ No OpenRouter API key found."); st.stop()
+    if not api_key: st.error("⚠️ No Groq API key found."); st.stop()
 
-    client=OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
+    client=Groq(api_key=api_key)
     prompt=(f"B.Tech Project Report ({file_data['name']}, ~{file_data.get('pages','?')} pages):\n\n"
             f"{file_data['text']}\n\nReview against SSIPMT guidelines. Return only the JSON.")
 
-    last_error = None
-    for model in FREE_MODELS:
-        for attempt in range(2):   # 2 tries per model before moving on
-            try:
-                response=client.chat.completions.create(
-                    model=model,
-                    messages=[{"role":"system","content":system_prompt},
-                              {"role":"user","content":prompt}],
-                    temperature=0.1, max_tokens=4096,
-                )
-                raw=response.choices[0].message.content
-                return robust_json_parse(raw)
+    response=client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role":"system","content":system_prompt},
+                  {"role":"user","content":prompt}],
+        temperature=0.1, max_tokens=4096,
+    )
+    raw=response.choices[0].message.content
+    return robust_json_parse(raw)
 
-            except Exception as e:
-                last_error = e
-                err_str = str(e)
-                if "429" in err_str or "rate" in err_str.lower() or "temporarily" in err_str.lower():
-                    if attempt == 0:
-                        # Wait and retry same model once
-                        st.toast(f"⏳ Rate limit on {model.split('/')[-1]} — waiting 35s then retrying...")
-                        time.sleep(35)
-                        continue
-                    else:
-                        # Move to next model
-                        st.toast(f"⚠️ Switching to next available model...")
-                        break
-                else:
-                    raise e  # Non-rate-limit error — raise immediately
-
-    raise last_error or Exception("All free models are currently rate-limited. Please wait a minute and try again.")
-
+# ─────────────────────────────────────────────
+# DISPLAY REVIEW
+# ─────────────────────────────────────────────
 def show_review(rv):
-    ws=compute_weighted_score(rv); rec=override_recommendation(ws)
+    ws=compute_weighted_score(rv)
+    rec=override_recommendation(ws)
     c1,c2,c3=st.columns([4,1,1])
     with c1:
         st.subheader(rv.get("project_title","Untitled"))
@@ -251,7 +290,7 @@ def show_review(rv):
         st.write(rv.get("executive_summary",""))
     with c2: st.metric("Weighted Score",f"{ws}/100"); st.caption(f"AI raw: {rv.get('overall_score',0)}")
     with c3: st.metric("Decision",""); st.markdown(f"**{rec_icon(rec)}**")
-    st.caption("Thresholds: >=95=APPROVED | 75-94=MINOR REVISION | 40-74=MAJOR REVISION | <40=REJECTED")
+    st.caption("Thresholds:  >=95 = ✅ APPROVED  |  75-94 = ⚠️ MINOR REVISION  |  40-74 = 🟠 MAJOR REVISION  |  <40 = ❌ REJECTED")
     st.divider()
 
     cols=st.columns(6)
@@ -358,44 +397,51 @@ def show_review(rv):
             for s in rv["strengths"]: st.markdown(f"✓ {s}")
 
     st.divider(); st.subheader("📥 Download Reports")
-    ws=compute_weighted_score(rv); rec2=override_recommendation(ws); d1,d2=st.columns(2)
+    ws=compute_weighted_score(rv); d1,d2=st.columns(2)
     with d1:
         try:
-            pdf=generate_full_report(rv,st.session_state.weights,ws,rec2)
+            pdf=generate_full_report(rv,st.session_state.weights,ws)
             fn=f"Review_{rv.get('project_title','report')[:30].replace(' ','_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
             st.download_button("📄 Full Review Report (PDF)",pdf,fn,"application/pdf",use_container_width=True,type="primary")
         except Exception as e: st.error(f"PDF error: {e}")
     with d2:
         try:
-            card=generate_report_card(rv,st.session_state.weights,ws,rec2)
+            card=generate_report_card(rv,st.session_state.weights,ws)
             fn2=f"Card_{rv.get('project_title','report')[:30].replace(' ','_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
             st.download_button("🪪 Student Report Card (PDF)",card,fn2,"application/pdf",use_container_width=True)
         except Exception as e: st.error(f"Card error: {e}")
 
+# ─────────────────────────────────────────────
 # API KEY
+# ─────────────────────────────────────────────
 if not get_api_key():
-    with st.expander("🔑 OpenRouter API Key Required",expanded=True):
-        st.session_state["or_key"]=st.text_input(
-            "Paste your free OpenRouter API key",type="password",
-            help="Get free key at openrouter.ai/keys — no credit card needed")
-        st.caption("🔗 [Get free key → openrouter.ai/keys](https://openrouter.ai/keys)")
-        st.info("✅ Free tier: 200 reviews/day · 131,000 token context · Full quality results")
+    with st.expander("🔑 Groq API Key Required", expanded=True):
+        st.session_state["groq_key"]=st.text_input(
+            "Paste your free Groq API key (stored only for this session)",
+            type="password", help="Get free key at console.groq.com")
+        st.caption("🔗 [Get free key → console.groq.com](https://console.groq.com)")
 else:
-    st.caption("✅ API key loaded")
+    st.caption("✅ Groq API key loaded")
 
-# REPORT INFORMATION
+# ─────────────────────────────────────────────
+# REPORT INFORMATION FORM
+# ─────────────────────────────────────────────
 st.subheader("📋 Report Information")
 c1,c2,c3,c4=st.columns(4)
 with c1: session=st.selectbox("Academic Session",SESSIONS,index=0)
 with c2: sub_name=st.text_input("Subject Name",placeholder="e.g. Major Project")
 with c3: sub_code=st.text_input("Subject Code",placeholder="e.g. CS801")
 with c4: semester=st.selectbox("Semester",[1,2,3,4,5,6,7,8],index=7)
+
 ff=fulfillment_text(semester)
 if semester==8: st.success(f"📜 **8th Semester →** {ff}")
 else: st.info(f"📜 **{semester}th Semester →** {ff}")
 
-with st.expander("⚖️ Scoring Weights (click to adjust)",expanded=False):
-    st.caption("Adjust dimension importance. Total should be 100%.")
+# ─────────────────────────────────────────────
+# SCORING WEIGHTS (collapsed)
+# ─────────────────────────────────────────────
+with st.expander("⚖️ Scoring Weights (click to adjust)", expanded=False):
+    st.caption("Adjust how much each dimension counts toward the final score. Total should be 100%.")
     new_wt={}; wcols=st.columns(7)
     for col,(k,label) in zip(wcols,WEIGHT_INFO.items()):
         with col: new_wt[k]=st.number_input(label,5,60,st.session_state.weights[k],5,key=f"w_{k}")
@@ -406,35 +452,56 @@ with st.expander("⚖️ Scoring Weights (click to adjust)",expanded=False):
 
 st.divider()
 
+# ─────────────────────────────────────────────
+# TABS
+# ─────────────────────────────────────────────
 tab1, = st.tabs(["📋  Single Review"])
 
 with tab1:
-    st.info(f"📌 Maximum **{MAX_PAGES} pages** per report (SSIPMT: 40–80 pages). Files exceeding this limit will not be processed.")
+    st.info(f"📌 Maximum **{MAX_PAGES} pages** per report (SSIPMT guideline: 40–80 pages). Files exceeding this limit will not be processed.")
     uploaded=st.file_uploader("Drag and drop PDF or DOCX file here",type=["pdf","docx"],
-                               key="single_upload",help=f"PDF or DOCX · Max {MAX_PAGES} pages")
+                               key="single_upload",help=f"PDF or DOCX · Max {MAX_PAGES} pages · Text-based PDFs only")
     if uploaded:
         ca,cb=st.columns([3,1])
         with ca: st.info(f"📁 **{uploaded.name}** — {uploaded.size/1024/1024:.2f} MB")
         with cb: start=st.button("🔍 Start Review",type="primary",use_container_width=True)
 
         if start:
-            if not sub_name.strip(): st.warning("⚠️ Enter Subject Name above first."); st.stop()
-            if not sub_code.strip(): st.warning("⚠️ Enter Subject Code above first."); st.stop()
+            if not sub_name.strip(): st.warning("⚠️ Please enter the Subject Name above first."); st.stop()
+            if not sub_code.strip(): st.warning("⚠️ Please enter the Subject Code above first."); st.stop()
+
             with st.spinner("Checking document..."):
                 try:
                     fd=extract_file(uploaded)
                     st.caption(f"✅ {fd['pages']} pages · {len(fd['text']):,} chars sent for review")
                 except Exception as e: st.error(str(e)); st.stop()
+
+            with st.expander("🔍 View extracted text sent to AI (verify before reviewing)", expanded=False):
+                st.caption("Exact text the AI reads. Diagrams are NOT visible — only text is extracted.")
+                st.text_area("First 3000 chars:", fd['text'][:3000], height=200, disabled=True)
+                if len(fd['text']) > 3000:
+                    st.text_area("Last 1000 chars (references):", fd['text'][-1000:], height=120, disabled=True)
+
             sys_prompt=build_system_prompt(session,sub_name,sub_code,semester,ff)
             with st.spinner("🤖 AI reviewing... (30–90 seconds)"):
                 try:
-                    rv=call_api(fd,sys_prompt)
+                    rv=call_gemini(fd,sys_prompt)
                     st.session_state.single_review=rv; st.success("✅ Review complete!")
                 except Exception as e:
-                    st.error(f"Review failed: {e}")
+                    err=str(e)
+                    if "429" in err or "RESOURCE_EXHAUSTED" in err:
+                        st.warning("⏳ Quota limit hit — waiting 60 seconds then retrying...")
+                        time.sleep(60)
+                        try:
+                            rv=call_gemini(fd,sys_prompt)
+                            st.session_state.single_review=rv; st.success("✅ Review complete!")
+                        except Exception as e2:
+                            st.error("⚠️ Gemini quota exhausted for today. Try again tomorrow.")
+                    else: st.error(f"Review failed: {err}")
 
     if st.session_state.single_review:
-        if st.button("🔄 Review Another Report",type="secondary"):
-            st.session_state.single_review=None; st.rerun()
+        if st.button("🔄 Review Another Report", type="secondary"):
+            st.session_state.single_review = None
+            st.rerun()
         st.divider()
         show_review(st.session_state.single_review)
