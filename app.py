@@ -38,13 +38,14 @@ st.markdown("""
 <div style='text-align:center; padding:18px 0 10px 0;'>
   <span style='font-size:36px;'>🎓</span>
   <h2 style='margin:4px 0 2px 0; color:#1e3a8a; font-size:26px;'>SSIPMT Project Thesis Report Reviewer</h2>
-  <p style='margin:0; color:#6b7280; font-size:25px;'>
-    Department of Information Technology &nbsp;|&nbsp; Developed by <strong>Sunil Dewangan</strong>
+  <p style='margin:0; color:#6b7280; font-size:13px;'>
+    Department of Information Technology &nbsp;|&nbsp; Developed by <strong>Sunil Kumar Dewangan</strong>
   </p>
 </div>
 <hr style='border:none; border-top:2px solid #e5e7eb; margin-bottom:18px;'/>
 """, unsafe_allow_html=True)
 
+# ─── GUIDELINES ───
 GUIDELINES = """
 SSIPMT B.Tech Project Report Guidelines — Dept. of IT
 
@@ -74,6 +75,7 @@ REFERENCES: min 15, min 10 peer-reviewed, IEEE numbered [1][2], no Wikipedia.
 GENERAL: No first-person, no placeholder text, min 2 pages per chapter, total 40-80 pages.
 """
 
+# ─── SYSTEM PROMPT ───
 def build_system_prompt(session, sub_name, sub_code, semester, fulfillment):
     return f"""You are an extremely strict B.Tech project report EXAMINER for SSIPMT Raipur, Dept. of IT.
 Your job is to FIND FAILURES and DEFICIENCIES — do not be generous or give benefit of the doubt.
@@ -108,7 +110,7 @@ RULE 3 — FAIL BY DEFAULT:
 
 RULE 4 — COUNT REFERENCES:
 Count [1] [2] [3] style citations visible in text.
-- < 15 found → meets_minimum_15=false, references score ≤ 30
+- < 15 found → meets_minimum_15=false, references score <= 30
 - < 10 journal/conference → meets_10_peer_reviewed=false
 - Missing DOI/volume/pages → ieee_format=POOR
 
@@ -124,19 +126,24 @@ RULE 6 — OVERALL SCORE (be PESSIMISTIC):
 - 0-24: Critical failures throughout
 WHEN UNCERTAIN: score LOWER, not higher.
 
-Return ONLY valid JSON, no markdown, no backticks:
-{{"project_title":"string","report_type":"string","student_names":["array"],"guide_name":"string","overall_score":number,"overall_recommendation":"APPROVED or MINOR_REVISION or MAJOR_REVISION or REJECTED","executive_summary":"3-4 sentences citing specific failures","format_compliance":{{"score":number,"checks":[{{"item":"string","status":"PASS or FAIL or WARNING or CANNOT_VERIFY","detail":"string"}}]}},"front_matter":{{"score":number,"sections":[{{"name":"string","present":true,"issues":"string or null"}}]}},"chapters":[{{"number":number,"title":"string","present":true,"estimated_pages":number,"meets_2page_minimum":true,"score":number,"issues":["array"],"strengths":["array"],"feedback":"string"}}],"technical_elements":{{"score":number,"dfd_level0":{{"present":true,"issues":"null"}},"dfd_level1":{{"present":true,"issues":"null"}},"dfd_level2":{{"present":true,"issues":"null"}},"er_diagram":{{"present":true,"issues":"null"}},"table_structures":{{"present":true,"count":number,"issues":"null"}},"algorithms":{{"present":true,"count":number,"properly_formatted":true,"issues":"null"}},"waterfall_diagram":{{"present":true,"issues":"null"}},"testing_types":{{"count":number,"types_found":["array"],"issues":"null"}}}},"abstract":{{"score":number,"estimated_word_count":number,"within_300_500":true,"has_keywords":true,"keyword_count":number,"covers_problem":true,"covers_solution":true,"covers_technologies":true,"covers_results":true,"has_citations":false,"issues":["array"],"feedback":"string"}},"references":{{"score":number,"total_count":number,"meets_minimum_15":true,"peer_reviewed_count":number,"meets_10_peer_reviewed":true,"ieee_format":"FULL or PARTIAL or POOR","issues":["array"],"feedback":"string"}},"language_quality":{{"score":number,"first_person_violations":["array"],"grammar_quality":"POOR or FAIR or GOOD or EXCELLENT","technical_accuracy":"POOR or FAIR or GOOD or EXCELLENT","academic_tone":"POOR or FAIR or GOOD or EXCELLENT","placeholder_text_found":false,"feedback":"string"}},"critical_issues":["array of serious failures"],"major_issues":["array"],"minor_issues":["array"],"strengths":["array"],"priority_action_list":[{{"priority":number,"action":"string","location":"string","severity":"CRITICAL or MAJOR or MINOR"}}]}}"""
+Return ONLY a valid JSON object. No markdown fences, no explanation, no text before or after the JSON.
+The JSON must start with {{ and end with }}.
+Use this exact structure:
+{{"project_title":"string","report_type":"string","student_names":["string"],"guide_name":"string","overall_score":0,"overall_recommendation":"MAJOR_REVISION","executive_summary":"string","format_compliance":{{"score":0,"checks":[{{"item":"string","status":"FAIL","detail":"string"}}]}},"front_matter":{{"score":0,"sections":[{{"name":"string","present":false,"issues":"string"}}]}},"chapters":[{{"number":1,"title":"string","present":false,"estimated_pages":0,"meets_2page_minimum":false,"score":0,"issues":["string"],"strengths":["string"],"feedback":"string"}}],"technical_elements":{{"score":0,"dfd_level0":{{"present":false,"issues":"string"}},"dfd_level1":{{"present":false,"issues":"string"}},"dfd_level2":{{"present":false,"issues":"string"}},"er_diagram":{{"present":false,"issues":"string"}},"table_structures":{{"present":false,"count":0,"issues":"string"}},"algorithms":{{"present":false,"count":0,"properly_formatted":false,"issues":"string"}},"waterfall_diagram":{{"present":false,"issues":"string"}},"testing_types":{{"count":0,"types_found":["string"],"issues":"string"}}}},"abstract":{{"score":0,"estimated_word_count":0,"within_300_500":false,"has_keywords":false,"keyword_count":0,"covers_problem":false,"covers_solution":false,"covers_technologies":false,"covers_results":false,"has_citations":false,"issues":["string"],"feedback":"string"}},"references":{{"score":0,"total_count":0,"meets_minimum_15":false,"peer_reviewed_count":0,"meets_10_peer_reviewed":false,"ieee_format":"POOR","issues":["string"],"feedback":"string"}},"language_quality":{{"score":0,"first_person_violations":["string"],"grammar_quality":"FAIR","technical_accuracy":"FAIR","academic_tone":"FAIR","placeholder_text_found":false,"feedback":"string"}},"critical_issues":["string"],"major_issues":["string"],"minor_issues":["string"],"strengths":["string"],"priority_action_list":[{{"priority":1,"action":"string","location":"string","severity":"CRITICAL"}}]}}"""
 
+# ─── DEFAULTS ───
 DEFAULT_WEIGHTS = {"format":15,"front_matter":10,"chapters":25,"technical":20,"abstract":5,"references":15,"language":10}
-WEIGHT_INFO = {"format":"Format","front_matter":"Front Matter","chapters":"Chapters","technical":"Technical","abstract":"Abstract","references":"References","language":"Language"}
+WEIGHT_INFO = {"format":"Format","front_matter":"Front Matter","chapters":"Chapters",
+               "technical":"Technical","abstract":"Abstract","references":"References","language":"Language"}
 SESSIONS = ["2025-26","2024-25","2026-27","2027-28","2023-24"]
 
 for k,v in {"weights":dict(DEFAULT_WEIGHTS),"single_review":None,"batch_results":[]}.items():
     if k not in st.session_state: st.session_state[k]=v
 
+# ─── HELPERS ───
 def get_api_key():
     # 1. Environment variable
-    key = os.getenv("GEMINI_API_KEY", "")
+    key = os.getenv("GEMINI_API_KEY","")
     if key: return key.strip().strip("\"'")
     # 2. Streamlit secrets (Streamlit Cloud)
     try:
@@ -145,7 +152,7 @@ def get_api_key():
     except Exception:
         pass
     # 3. Manually entered in session
-    return st.session_state.get("gemini_key", "").strip()
+    return st.session_state.get("gemini_key","").strip()
 
 def score_emoji(s): return "🟢" if s>=80 else ("🟡" if s>=60 else "🔴")
 
@@ -195,7 +202,7 @@ def extract_file(uploaded_file):
     if name.endswith(".pdf"):
         pages=count_pdf_pages(raw)
         if pages>MAX_PAGES:
-            raise ValueError(f"This report has **{pages} pages**. Maximum allowed is **{MAX_PAGES} pages** (SSIPMT guideline: 40-80 pages). Please reduce the report and re-upload.")
+            raise ValueError(f"This report has **{pages} pages**. Maximum allowed is **{MAX_PAGES} pages** (SSIPMT guideline: 40-80 pages).")
         text=extract_text_from_pdf(raw)
         if not text.strip():
             raise ValueError("Could not extract text. PDF may be scanned. Try DOCX format.")
@@ -206,52 +213,69 @@ def extract_file(uploaded_file):
         if not text.strip(): raise ValueError("Could not extract text from DOCX.")
         est_pages=len(text.split())//300
         if est_pages>MAX_PAGES:
-            raise ValueError(f"Document estimated at ~{est_pages} pages. Maximum allowed is {MAX_PAGES} pages.")
+            raise ValueError(f"Document estimated at ~{est_pages} pages. Maximum is {MAX_PAGES}.")
         return {"text":text[:25000],"name":uploaded_file.name,"pages":est_pages}
     raise ValueError("Upload PDF or DOCX only.")
 
 def robust_json_parse(raw):
-    """Extract JSON even if response is slightly truncated."""
-    clean = raw.replace("```json","").replace("```","").strip()
+    """Robustly extract JSON even if response has extra text around it."""
+    clean = raw.strip()
+    # Strip markdown fences if present
+    if "```" in clean:
+        clean = clean.replace("```json","").replace("```","").strip()
+    # Find opening brace
     start = clean.find("{")
     if start < 0:
-        raise ValueError("No JSON found in response")
-    # Walk character by character to find matching closing brace
+        raise ValueError("No JSON object found in response")
+    # Walk character by character to find the matching closing brace
     depth=0; end_pos=-1; in_str=False; esc=False
-    for i,ch in enumerate(clean[start:],start):
-        if esc: esc=False; continue
-        if ch=="\\" and in_str: esc=True; continue
-        if ch=='"' and not esc: in_str=not in_str; continue
-        if in_str: continue
-        if ch=="{": depth+=1
+    for i, ch in enumerate(clean[start:], start):
+        if esc:
+            esc=False; continue
+        if ch=="\\" and in_str:
+            esc=True; continue
+        if ch=='"' and not esc:
+            in_str = not in_str; continue
+        if in_str:
+            continue
+        if ch=="{":
+            depth+=1
         elif ch=="}":
             depth-=1
-            if depth==0: end_pos=i+1; break
-    if end_pos>start:
-        try: return json.loads(clean[start:end_pos])
-        except: pass
-    # Fallback: rfind last closing brace
-    end_pos=clean.rfind("}")+1
-    if start>=0 and end_pos>start:
-        try: return json.loads(clean[start:end_pos])
+            if depth==0:
+                end_pos=i+1; break
+    if end_pos > start:
+        try:
+            return json.loads(clean[start:end_pos])
+        except json.JSONDecodeError:
+            pass
+    # Fallback: try rfind last }
+    end_pos = clean.rfind("}")+1
+    if start >= 0 and end_pos > start:
+        try:
+            return json.loads(clean[start:end_pos])
         except json.JSONDecodeError as e:
             raise ValueError(f"Could not parse JSON: {e}")
-    raise ValueError("No valid JSON in response")
+    raise ValueError("No valid JSON found in AI response")
 
 def call_gemini(file_data, system_prompt):
     api_key=get_api_key()
-    if not api_key: st.error("No API key found."); st.stop()
+    if not api_key: st.error("No Gemini API key found."); st.stop()
     client=genai.Client(api_key=api_key)
     config=types.GenerateContentConfig(
         system_instruction=system_prompt,
-        max_output_tokens=8192,          # increased — 4096 too small for full JSON
+        max_output_tokens=8192,        # 8192 prevents JSON truncation
         temperature=0.1,
         response_mime_type="application/json")
     prompt=(f"B.Tech Report ({file_data['name']}, ~{file_data.get('pages','?')} pages):\n\n"
-            f"{file_data['text']}\n\nReview against SSIPMT guidelines. Return only JSON.")
-    response=client.models.generate_content(model="gemini-2.5-flash",contents=[prompt],config=config)
+            f"{file_data['text']}\n\nReview this report. Return only the JSON object.")
+    response=client.models.generate_content(
+        model="gemini-2.5-flash",      # current free model (2.0 deprecated Jun 2026)
+        contents=[prompt],
+        config=config)
     return robust_json_parse(response.text)
 
+# ─── DISPLAY REVIEW ───
 def show_review(rv):
     ws=compute_weighted_score(rv); rec=override_recommendation(ws)
     c1,c2,c3=st.columns([4,1,1])
@@ -384,12 +408,13 @@ def show_review(rv):
         except Exception as e: st.error(f"Card error: {e}")
 
 # ─── API KEY ───
-if not get_api_key():
-    with st.expander("🔑 Gemini API Key Required",expanded=True):
-        st.session_state["gemini_key"]=st.text_input("Paste Gemini API key",type="password",
-            help="Get free key at aistudio.google.com/apikey")
-else:
+if get_api_key():
     st.caption("✅ Gemini API key loaded")
+else:
+    st.warning("⚠️ Gemini API key not found. Add GEMINI_API_KEY to Streamlit Cloud Secrets.")
+    _k=st.text_input("Or paste key here (this session only)",type="password",
+                     help="Get free key at aistudio.google.com/apikey")
+    if _k: st.session_state["gemini_key"]=_k
 
 # ─── REPORT INFORMATION ───
 st.subheader("📋 Report Information")
@@ -424,9 +449,9 @@ with tab1:
     if uploaded:
         ca,cb=st.columns([3,1])
         with ca: st.info(f"📁 **{uploaded.name}** — {uploaded.size/1024/1024:.2f} MB")
-        with cb: start=st.button("🔍 Start Review",type="primary",use_container_width=True)
+        with cb: start_btn=st.button("🔍 Start Review",type="primary",use_container_width=True)
 
-        if start:
+        if start_btn:
             if not sub_name.strip(): st.warning("Enter Subject Name above first."); st.stop()
             if not sub_code.strip(): st.warning("Enter Subject Code above first."); st.stop()
 
@@ -466,7 +491,7 @@ with tab1:
         show_review(st.session_state.single_review)
 
 with tab2:
-    st.info(f"📌 Each file must be under **{MAX_PAGES} pages**. Files exceeding limit are skipped automatically.")
+    st.info(f"📌 Each file must be under **{MAX_PAGES} pages**. Files exceeding limit are skipped.")
     batch_files=st.file_uploader("Drag and drop multiple PDF or DOCX files here",
                                   type=["pdf","docx"],accept_multiple_files=True,key="batch_upload")
     if batch_files:
@@ -494,8 +519,9 @@ with tab2:
         rows=[]
         for r in st.session_state.batch_results:
             if r["error"]:
-                rows.append({"File":r["file"],"Students":"—","Title":f"ERROR: {r['error'][:50]}","Score":0,
-                             "Format":0,"Front Matter":0,"Technical":0,"Abstract":0,"References":0,"Language":0,"Recommendation":"ERROR"})
+                rows.append({"File":r["file"],"Students":"—","Title":f"ERROR: {r['error'][:50]}",
+                             "Score":0,"Format":0,"Front Matter":0,"Technical":0,
+                             "Abstract":0,"References":0,"Language":0,"Recommendation":"ERROR"})
             else:
                 rv=r["review"]
                 rows.append({"File":r["file"],"Students":", ".join(rv.get("student_names",["—"])),
