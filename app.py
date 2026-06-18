@@ -135,12 +135,17 @@ for k,v in {"weights":dict(DEFAULT_WEIGHTS),"single_review":None,"batch_results"
     if k not in st.session_state: st.session_state[k]=v
 
 def get_api_key():
-    raw=os.getenv("GEMINI_API_KEY","")
-    if not raw:
-        try: raw=st.secrets.get("GEMINI_API_KEY","")
-        except: pass
-    if not raw: raw=st.session_state.get("gemini_key","")
-    return raw.strip().strip("\"'") if raw else ""
+    # 1. Environment variable
+    key = os.getenv("GEMINI_API_KEY", "")
+    if key: return key.strip().strip("\"'")
+    # 2. Streamlit secrets (Streamlit Cloud)
+    try:
+        key = st.secrets["GEMINI_API_KEY"]
+        if key: return str(key).strip().strip("\"'")
+    except Exception:
+        pass
+    # 3. Manually entered in session
+    return st.session_state.get("gemini_key", "").strip()
 
 def score_emoji(s): return "🟢" if s>=80 else ("🟡" if s>=60 else "🔴")
 
