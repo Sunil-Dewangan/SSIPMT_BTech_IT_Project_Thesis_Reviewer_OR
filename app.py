@@ -210,20 +210,47 @@ def extract_file(uploaded_file):
         return {"text":text[:25000],"name":uploaded_file.name,"pages":est_pages}
     raise ValueError("Upload PDF or DOCX only.")
 
+def robust_json_parse(raw):
+    """Extract JSON even if response is slightly truncated."""
+    clean = raw.replace("```json","").replace("```","").strip()
+    start = clean.find("{")
+    if start < 0:
+        raise ValueError("No JSON found in response")
+    # Walk character by character to find matching closing brace
+    depth=0; end_pos=-1; in_str=False; esc=False
+    for i,ch in enumerate(clean[start:],start):
+        if esc: esc=False; continue
+        if ch=="\\" and in_str: esc=True; continue
+        if ch=='"' and not esc: in_str=not in_str; continue
+        if in_str: continue
+        if ch=="{": depth+=1
+        elif ch=="}":
+            depth-=1
+            if depth==0: end_pos=i+1; break
+    if end_pos>start:
+        try: return json.loads(clean[start:end_pos])
+        except: pass
+    # Fallback: rfind last closing brace
+    end_pos=clean.rfind("}")+1
+    if start>=0 and end_pos>start:
+        try: return json.loads(clean[start:end_pos])
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Could not parse JSON: {e}")
+    raise ValueError("No valid JSON in response")
+
 def call_gemini(file_data, system_prompt):
     api_key=get_api_key()
     if not api_key: st.error("No API key found."); st.stop()
     client=genai.Client(api_key=api_key)
     config=types.GenerateContentConfig(
-        system_instruction=system_prompt, max_output_tokens=4096,
-        temperature=0.1, response_mime_type="application/json")
+        system_instruction=system_prompt,
+        max_output_tokens=8192,          # increased — 4096 too small for full JSON
+        temperature=0.1,
+        response_mime_type="application/json")
     prompt=(f"B.Tech Report ({file_data['name']}, ~{file_data.get('pages','?')} pages):\n\n"
             f"{file_data['text']}\n\nReview against SSIPMT guidelines. Return only JSON.")
     response=client.models.generate_content(model="gemini-2.5-flash",contents=[prompt],config=config)
-    raw=response.text; clean=raw.replace("```json","").replace("```","").strip()
-    s=clean.find("{"); e=clean.rfind("}")+1
-    if s>=0 and e>s: clean=clean[s:e]
-    return json.loads(clean)
+    return robust_json_parse(response.text)
 
 def show_review(rv):
     ws=compute_weighted_score(rv); rec=override_recommendation(ws)
