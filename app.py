@@ -38,8 +38,8 @@ st.markdown("""
 <div style='text-align:center; padding:18px 0 10px 0;'>
   <span style='font-size:36px;'>🎓</span>
   <h2 style='margin:4px 0 2px 0; color:#1e3a8a; font-size:26px;'>SSIPMT Project Thesis Report Reviewer</h2>
-  <p style='margin:0; color:#6b7280; font-size:13px;'>
-    Department of Information Technology &nbsp;|&nbsp; Developed by <strong>Sunil Kumar Dewangan</strong>
+  <p style='margin:0; color:#6b7280; font-size:25px;'>
+    Department of Information Technology &nbsp;|&nbsp; Developed by <strong>Sunil Dewangan</strong>
   </p>
 </div>
 <hr style='border:none; border-top:2px solid #e5e7eb; margin-bottom:18px;'/>
@@ -217,76 +217,83 @@ def extract_file(uploaded_file):
         return {"text":text[:25000],"name":uploaded_file.name,"pages":est_pages}
     raise ValueError("Upload PDF or DOCX only.")
 
+def extract_response_text(response):
+    """Safely extract text from Gemini response — handles None, safety blocks, empty candidates."""
+    # Try direct .text attribute
+    txt = getattr(response, 'text', None)
+    if txt and txt.strip():
+        return txt
+    # Try via candidates list
+    candidates = getattr(response, 'candidates', None)
+    if candidates:
+        cand = candidates[0]
+        finish = str(getattr(cand, 'finish_reason', ''))
+        if 'SAFETY' in finish:
+            raise ValueError("Response blocked by Gemini safety filters.")
+        if 'RECITATION' in finish:
+            raise ValueError("Response blocked (recitation policy).")
+        content = getattr(cand, 'content', None)
+        if content:
+            parts = getattr(content, 'parts', [])
+            text = ''.join(getattr(p, 'text', '') for p in parts if getattr(p, 'text', ''))
+            if text.strip():
+                return text
+    raise ValueError("Gemini returned an empty response. This is usually temporary — please try again.")
+
 def fix_json_strings(s):
-    """Escape unescaped control characters inside JSON string values.
-    The AI sometimes writes literal newlines/tabs inside strings, which
-    breaks the JSON parser even though the structure is otherwise valid."""
-    result = []
-    in_str = False
-    esc = False
+    """Escape bare newlines/tabs inside JSON string values that break the parser."""
+    result=[]; in_str=False; esc=False
     for ch in s:
-        if esc:
-            result.append(ch); esc = False
-        elif ch == '\\' and in_str:
-            result.append(ch); esc = True
-        elif ch == '"':
-            in_str = not in_str; result.append(ch)
-        elif in_str and ch == '\n':
-            result.append('\\n')
-        elif in_str and ch == '\r':
-            result.append('\\r')
-        elif in_str and ch == '\t':
-            result.append('\\t')
-        else:
-            result.append(ch)
+        if esc: result.append(ch); esc=False
+        elif ch=='\\' and in_str: result.append(ch); esc=True
+        elif ch=='"': in_str=not in_str; result.append(ch)
+        elif in_str and ch=='\n': result.append('\\n')
+        elif in_str and ch=='\r': result.append('\\r')
+        elif in_str and ch=='\t': result.append('\\t')
+        else: result.append(ch)
     return ''.join(result)
 
 def robust_json_parse(raw):
     """Extract and repair JSON from AI response."""
+    if not raw or not raw.strip():
+        raise ValueError("Empty response from AI — please try again.")
     clean = raw.strip()
     if "```" in clean:
         clean = clean.replace("```json","").replace("```","").strip()
     start = clean.find("{")
     if start < 0:
         raise ValueError("No JSON object found in response")
-    # Walk to find matching closing brace
     depth=0; end_pos=-1; in_str=False; esc=False
     for i, ch in enumerate(clean[start:], start):
         if esc: esc=False; continue
         if ch=="\\" and in_str: esc=True; continue
-        if ch=='"' and not esc: in_str = not in_str; continue
+        if ch=='"' and not esc: in_str=not in_str; continue
         if in_str: continue
         if ch=="{": depth+=1
         elif ch=="}":
             depth-=1
             if depth==0: end_pos=i+1; break
-    candidate = clean[start:end_pos] if end_pos > start else clean[start:clean.rfind("}")+1]
-    # First try: parse as-is
-    try:
-        return json.loads(candidate)
-    except json.JSONDecodeError:
-        pass
-    # Second try: fix unescaped control characters inside strings
-    try:
-        return json.loads(fix_json_strings(candidate))
+    candidate = clean[start:end_pos] if end_pos>start else clean[start:clean.rfind("}")+1]
+    # Try 1: parse as-is
+    try: return json.loads(candidate)
+    except json.JSONDecodeError: pass
+    # Try 2: fix bare newlines inside strings
+    try: return json.loads(fix_json_strings(candidate))
     except json.JSONDecodeError as e:
         raise ValueError(f"Could not parse JSON: {e}")
 
-GEMINI_MODELS = [
-    "gemini-2.5-flash",       # primary — best quality
-    "gemini-2.5-flash-lite",  # fallback — lighter, less demand
-]
+GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
 
 def call_gemini(file_data, system_prompt):
     api_key=get_api_key()
     if not api_key: st.error("No Gemini API key found."); st.stop()
     client=genai.Client(api_key=api_key)
     prompt=(f"B.Tech Report ({file_data['name']}, ~{file_data.get('pages','?')} pages):\n\n"
-            f"{file_data['text']}\n\nReview this report. Return only the JSON object.")
+            f"{file_data['text']}\n\nReview this report strictly. Return ONLY the JSON object, nothing else.")
 
-    last_error = None
+    last_error=None
     for model in GEMINI_MODELS:
-        for attempt in range(3):  # 3 attempts per model
+        for attempt in range(3):
             try:
                 config=types.GenerateContentConfig(
                     system_instruction=system_prompt,
@@ -294,21 +301,25 @@ def call_gemini(file_data, system_prompt):
                     temperature=0.1)
                 response=client.models.generate_content(
                     model=model, contents=[prompt], config=config)
-                return robust_json_parse(response.text)
+                text = extract_response_text(response)
+                return robust_json_parse(text)
             except Exception as e:
-                last_error = e
-                err = str(e)
-                if "503" in err or "UNAVAILABLE" in err or "high demand" in err.lower():
-                    wait = 20 * (attempt + 1)  # 20s, 40s, 60s
+                last_error=e; err=str(e)
+                if "503" in err or "UNAVAILABLE" in err or "high demand" in err.lower() or "overload" in err.lower():
+                    wait=20*(attempt+1)
                     st.toast(f"⏳ {model} busy — waiting {wait}s (attempt {attempt+1}/3)...")
                     time.sleep(wait)
                 elif "429" in err or "RESOURCE_EXHAUSTED" in err:
-                    st.toast(f"⏳ Quota limit — waiting 60s...")
+                    st.toast("⏳ Quota limit — waiting 60s...")
                     time.sleep(60)
+                elif "Empty response" in err:
+                    st.toast(f"⏳ Empty response from {model} — retrying...")
+                    time.sleep(10)
                 else:
-                    raise e  # non-retryable error — stop immediately
+                    raise e
 
-    raise last_error or Exception("All Gemini models are currently unavailable. Please try again in a few minutes.")
+    raise last_error or Exception("All Gemini models unavailable. Please try again in a few minutes.")
+
 
 # ─── DISPLAY REVIEW ───
 def show_review(rv):
