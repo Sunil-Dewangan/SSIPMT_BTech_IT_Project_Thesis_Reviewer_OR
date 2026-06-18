@@ -137,20 +137,11 @@ def generate_full_report(review:dict, weights:dict, weighted_score:int, recommen
     pdf.ln(2)
 
     # ── Report Info ──
-    #pdf.sec("Report Information")
-    #pdf.kv("Project Title", review.get("project_title","-"),          fill=True)
-    #pdf.kv_wrap("Student(s)",  ", ".join(review.get("student_names",["-"])), fill=False)
-    #pdf.kv("Guide",         review.get("guide_name","-"),             fill=True)
-    #pdf.kv("Report Type",   review.get("report_type","B.Tech Project Report"), fill=False)
-
     pdf.sec("Report Information")
-    for i,(k,v) in enumerate([
-        ("Project Title", review.get("project_title","-")),
-        ("Student(s)",    ", ".join(review.get("student_names",["-"]))),
-        ("Guide",         review.get("guide_name","-")),
-        ("Report Type",   review.get("report_type","B.Tech Project Report")),
-    ]):
-        pdf.kv(k, str(v)[:95], fill=(i%2==0))
+    pdf.kv("Project Title", review.get("project_title","-"),          fill=True)
+    pdf.kv_wrap("Student(s)",  ", ".join(review.get("student_names",["-"])), fill=False)
+    pdf.kv("Guide",         review.get("guide_name","-"),             fill=True)
+    pdf.kv("Report Type",   review.get("report_type","B.Tech Project Report"), fill=False)
 
     # ── Score Summary ──
     pdf.ln(4)
@@ -311,18 +302,10 @@ def generate_report_card(review:dict, weights:dict, weighted_score:int, recommen
 
     # ── Project Info — same KV table as Full Review, no overflow ──
     lw=55; vw=W-lw
-    #pdf.kv("Project Title", review.get("project_title","-"),               fill=True)
-    #pdf.kv_wrap("Student(s)",  ", ".join(review.get("student_names",["-"])),  fill=False)
-    #pdf.kv("Guide",         review.get("guide_name","-"),                  fill=True)
-    #pdf.kv("Report Type",   review.get("report_type","B.Tech Project Report"), fill=False)
-    #pdf.sec("Report Information")
-    for i,(k,v) in enumerate([
-        ("Project Title", review.get("project_title","-")),
-        ("Student(s)",    ", ".join(review.get("student_names",["-"]))),
-        ("Guide",         review.get("guide_name","-")),
-        ("Report Type",   review.get("report_type","B.Tech Project Report")),
-    ]):
-        pdf.kv(k, str(v)[:95], fill=(i%2==0))
+    pdf.kv("Project Title", review.get("project_title","-"),               fill=True)
+    pdf.kv_wrap("Student(s)",  ", ".join(review.get("student_names",["-"])),  fill=False)
+    pdf.kv("Guide",         review.get("guide_name","-"),                  fill=True)
+    pdf.kv("Report Type",   review.get("report_type","B.Tech Project Report"), fill=False)
     pdf.ln(3)
 
     # ── Score + Recommendation ──
