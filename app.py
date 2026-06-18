@@ -121,10 +121,14 @@ RULE 6 — OVERALL SCORE (be PESSIMISTIC):
 - 0-24: Critical failures throughout
 WHEN UNCERTAIN: score LOWER, not higher.
 
-Return ONLY a valid JSON object. No markdown fences, no explanation, no text before or after the JSON.
-The JSON must start with {{ and end with }}.
-Use this exact structure:
-{{"project_title":"string","report_type":"string","student_names":["string"],"guide_name":"string","overall_score":0,"overall_recommendation":"MAJOR_REVISION","executive_summary":"string","format_compliance":{{"score":0,"checks":[{{"item":"string","status":"FAIL","detail":"string"}}]}},"front_matter":{{"score":0,"sections":[{{"name":"string","present":false,"issues":"string"}}]}},"chapters":[{{"number":1,"title":"string","present":false,"estimated_pages":0,"meets_2page_minimum":false,"score":0,"issues":["string"],"strengths":["string"],"feedback":"string"}}],"technical_elements":{{"score":0,"dfd_level0":{{"present":false,"issues":"string"}},"dfd_level1":{{"present":false,"issues":"string"}},"dfd_level2":{{"present":false,"issues":"string"}},"er_diagram":{{"present":false,"issues":"string"}},"table_structures":{{"present":false,"count":0,"issues":"string"}},"algorithms":{{"present":false,"count":0,"properly_formatted":false,"issues":"string"}},"waterfall_diagram":{{"present":false,"issues":"string"}},"testing_types":{{"count":0,"types_found":["string"],"issues":"string"}}}},"abstract":{{"score":0,"estimated_word_count":0,"within_300_500":false,"has_keywords":false,"keyword_count":0,"covers_problem":false,"covers_solution":false,"covers_technologies":false,"covers_results":false,"has_citations":false,"issues":["string"],"feedback":"string"}},"references":{{"score":0,"total_count":0,"meets_minimum_15":false,"peer_reviewed_count":0,"meets_10_peer_reviewed":false,"ieee_format":"POOR","issues":["string"],"feedback":"string"}},"language_quality":{{"score":0,"first_person_violations":["string"],"grammar_quality":"FAIR","technical_accuracy":"FAIR","academic_tone":"FAIR","placeholder_text_found":false,"feedback":"string"}},"critical_issues":["string"],"major_issues":["string"],"minor_issues":["string"],"strengths":["string"],"priority_action_list":[{{"priority":1,"action":"string","location":"string","severity":"CRITICAL"}}]}}"""
+CRITICAL OUTPUT RULES:
+- Return ONLY a valid JSON object, nothing else before or after
+- The chapters array MUST contain ALL 14 chapters (Ch1 through Ch14) — never fewer
+- Keep feedback to 1-2 sentences per chapter to stay within token limits
+- Keep issues and strengths to max 3 items each per chapter
+
+JSON structure (chapters array must have 14 entries, one per chapter):
+{{"project_title":"string","report_type":"string","student_names":["string"],"guide_name":"string","overall_score":0,"overall_recommendation":"MAJOR_REVISION","executive_summary":"2 sentences","format_compliance":{{"score":0,"checks":[{{"item":"string","status":"FAIL","detail":"string"}},{{"item":"string","status":"FAIL","detail":"string"}}]}},"front_matter":{{"score":0,"sections":[{{"name":"Declaration","present":false,"issues":"string"}},{{"name":"Abstract","present":false,"issues":"string"}}]}},"chapters":[{{"number":1,"title":"Introduction","present":false,"estimated_pages":0,"meets_2page_minimum":false,"score":0,"issues":["string"],"strengths":[],"feedback":"1-2 sentences"}},{{"number":2,"title":"Previous Work","present":false,"estimated_pages":0,"meets_2page_minimum":false,"score":0,"issues":["string"],"strengths":[],"feedback":"1-2 sentences"}}],"technical_elements":{{"score":0,"dfd_level0":{{"present":false,"issues":"string"}},"dfd_level1":{{"present":false,"issues":"string"}},"dfd_level2":{{"present":false,"issues":"string"}},"er_diagram":{{"present":false,"issues":"string"}},"table_structures":{{"present":false,"count":0,"issues":"string"}},"algorithms":{{"present":false,"count":0,"properly_formatted":false,"issues":"string"}},"waterfall_diagram":{{"present":false,"issues":"string"}},"testing_types":{{"count":0,"types_found":["string"],"issues":"string"}}}},"abstract":{{"score":0,"estimated_word_count":0,"within_300_500":false,"has_keywords":false,"keyword_count":0,"covers_problem":false,"covers_solution":false,"covers_technologies":false,"covers_results":false,"has_citations":false,"issues":["string"],"feedback":"string"}},"references":{{"score":0,"total_count":0,"meets_minimum_15":false,"peer_reviewed_count":0,"meets_10_peer_reviewed":false,"ieee_format":"POOR","issues":["string"],"feedback":"string"}},"language_quality":{{"score":0,"first_person_violations":["string"],"grammar_quality":"FAIR","technical_accuracy":"FAIR","academic_tone":"FAIR","placeholder_text_found":false,"feedback":"string"}},"critical_issues":["string"],"major_issues":["string"],"minor_issues":["string"],"strengths":["string"],"priority_action_list":[{{"priority":1,"action":"string","location":"string","severity":"CRITICAL"}},{{"priority":2,"action":"string","location":"string","severity":"MAJOR"}}]}}"""
 
 # ─── DEFAULTS ───
 DEFAULT_WEIGHTS = {"format":15,"front_matter":10,"chapters":25,"technical":20,"abstract":5,"references":15,"language":10}
@@ -264,7 +268,7 @@ def call_gemini(file_data, system_prompt):
                         {"role":"system","content":system_prompt},
                         {"role":"user","content":prompt}
                     ],
-                    max_tokens=8192,
+                    max_tokens=16384,
                     temperature=0.1
                 )
                 raw=response.choices[0].message.content
