@@ -6,8 +6,7 @@ Powered by Google Gemini API — 100% FREE
 """
 
 import streamlit as st
-from google import genai
-from google.genai import types
+from openai import OpenAI
 import json
 import io
 import os
@@ -39,7 +38,7 @@ st.markdown("""
   <span style='font-size:36px;'>🎓</span>
   <h2 style='margin:4px 0 2px 0; color:#1e3a8a; font-size:26px;'>SSIPMT Project Thesis Report Reviewer</h2>
   <p style='margin:0; color:#6b7280; font-size:25px;'>
-    Department of Information Technology &nbsp;|&nbsp; Developed by <strong>Sunil Dewangan</strong>
+    Department of Information Technology &nbsp;|&nbsp; Developed by <strong>Sunil Kumar Dewangan</strong>
   </p>
 </div>
 <hr style='border:none; border-top:2px solid #e5e7eb; margin-bottom:18px;'/>
@@ -217,28 +216,12 @@ def extract_file(uploaded_file):
         return {"text":text[:25000],"name":uploaded_file.name,"pages":est_pages}
     raise ValueError("Upload PDF or DOCX only.")
 
-def extract_response_text(response):
-    """Safely extract text from Gemini response — handles None, safety blocks, empty candidates."""
-    # Try direct .text attribute
-    txt = getattr(response, 'text', None)
-    if txt and txt.strip():
-        return txt
-    # Try via candidates list
-    candidates = getattr(response, 'candidates', None)
-    if candidates:
-        cand = candidates[0]
-        finish = str(getattr(cand, 'finish_reason', ''))
-        if 'SAFETY' in finish:
-            raise ValueError("Response blocked by Gemini safety filters.")
-        if 'RECITATION' in finish:
-            raise ValueError("Response blocked (recitation policy).")
-        content = getattr(cand, 'content', None)
-        if content:
-            parts = getattr(content, 'parts', [])
-            text = ''.join(getattr(p, 'text', '') for p in parts if getattr(p, 'text', ''))
-            if text.strip():
-                return text
-    raise ValueError("Gemini returned an empty response. This is usually temporary — please try again.")
+# OpenAI-compatible client for Gemini — more reliable than google-genai SDK
+def make_gemini_client(api_key):
+    return OpenAI(
+        api_key=api_key,
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+    )
 
 def fix_json_strings(s):
     """Escape bare newlines/tabs inside JSON string values that break the parser."""
@@ -287,7 +270,7 @@ GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
 def call_gemini(file_data, system_prompt):
     api_key=get_api_key()
     if not api_key: st.error("No Gemini API key found."); st.stop()
-    client=genai.Client(api_key=api_key)
+    client=make_gemini_client(api_key)
     prompt=(f"B.Tech Report ({file_data['name']}, ~{file_data.get('pages','?')} pages):\n\n"
             f"{file_data['text']}\n\nReview this report strictly. Return ONLY the JSON object, nothing else.")
 
@@ -295,21 +278,26 @@ def call_gemini(file_data, system_prompt):
     for model in GEMINI_MODELS:
         for attempt in range(3):
             try:
-                config=types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    max_output_tokens=8192,
-                    temperature=0.1)
-                response=client.models.generate_content(
-                    model=model, contents=[prompt], config=config)
-                text = extract_response_text(response)
-                return robust_json_parse(text)
+                response=client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role":"system","content":system_prompt},
+                        {"role":"user","content":prompt}
+                    ],
+                    max_tokens=8192,
+                    temperature=0.1
+                )
+                raw=response.choices[0].message.content
+                if not raw or not raw.strip():
+                    raise ValueError("Empty response — retrying")
+                return robust_json_parse(raw)
             except Exception as e:
                 last_error=e; err=str(e)
                 if "503" in err or "UNAVAILABLE" in err or "high demand" in err.lower() or "overload" in err.lower():
                     wait=20*(attempt+1)
                     st.toast(f"⏳ {model} busy — waiting {wait}s (attempt {attempt+1}/3)...")
                     time.sleep(wait)
-                elif "429" in err or "RESOURCE_EXHAUSTED" in err:
+                elif "429" in err or "RESOURCE_EXHAUSTED" in err or "quota" in err.lower():
                     st.toast("⏳ Quota limit — waiting 60s...")
                     time.sleep(60)
                 elif "Empty response" in err:
