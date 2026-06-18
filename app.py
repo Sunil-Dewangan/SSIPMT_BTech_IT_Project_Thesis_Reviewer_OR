@@ -8,6 +8,7 @@ Powered by Google Gemini API — 100% FREE
 import streamlit as st
 from openai import OpenAI
 import json
+from json_repair import repair_json
 import io
 import os
 import time
@@ -223,46 +224,30 @@ def make_gemini_client(api_key):
         base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
     )
 
-def fix_json_strings(s):
-    """Escape bare newlines/tabs inside JSON string values that break the parser."""
-    result=[]; in_str=False; esc=False
-    for ch in s:
-        if esc: result.append(ch); esc=False
-        elif ch=='\\' and in_str: result.append(ch); esc=True
-        elif ch=='"': in_str=not in_str; result.append(ch)
-        elif in_str and ch=='\n': result.append('\\n')
-        elif in_str and ch=='\r': result.append('\\r')
-        elif in_str and ch=='\t': result.append('\\t')
-        else: result.append(ch)
-    return ''.join(result)
-
 def robust_json_parse(raw):
-    """Extract and repair JSON from AI response."""
+    """Extract and repair JSON from AI response using json_repair library."""
     if not raw or not raw.strip():
         raise ValueError("Empty response from AI — please try again.")
     clean = raw.strip()
+    # Strip markdown fences
     if "```" in clean:
         clean = clean.replace("```json","").replace("```","").strip()
+    # Find the JSON object boundaries
     start = clean.find("{")
     if start < 0:
         raise ValueError("No JSON object found in response")
-    depth=0; end_pos=-1; in_str=False; esc=False
-    for i, ch in enumerate(clean[start:], start):
-        if esc: esc=False; continue
-        if ch=="\\" and in_str: esc=True; continue
-        if ch=='"' and not esc: in_str=not in_str; continue
-        if in_str: continue
-        if ch=="{": depth+=1
-        elif ch=="}":
-            depth-=1
-            if depth==0: end_pos=i+1; break
-    candidate = clean[start:end_pos] if end_pos>start else clean[start:clean.rfind("}")+1]
-    # Try 1: parse as-is
-    try: return json.loads(candidate)
-    except json.JSONDecodeError: pass
-    # Try 2: fix bare newlines inside strings
-    try: return json.loads(fix_json_strings(candidate))
-    except json.JSONDecodeError as e:
+    # Try 1: direct parse on everything from first {
+    candidate = clean[start:]
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        pass
+    # Try 2: json_repair — handles unescaped quotes, bare newlines,
+    # missing commas, and all common LLM JSON formatting errors
+    try:
+        repaired = repair_json(candidate)
+        return json.loads(repaired)
+    except Exception as e:
         raise ValueError(f"Could not parse JSON: {e}")
 
 GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
