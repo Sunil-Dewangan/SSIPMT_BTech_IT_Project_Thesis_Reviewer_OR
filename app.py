@@ -1,9 +1,4 @@
-"""
-SSIPMT B.Tech Project Thesis Report Reviewer
-Department of Information Technology, SSIPMT Raipur
-Developed by Sunil Kumar Dewangan
-Powered by Google Gemini API — 100% FREE
-"""
+
 
 import streamlit as st
 from openai import OpenAI
@@ -321,14 +316,15 @@ def show_review(rv):
 
     if rv.get("priority_action_list"):
         with st.expander("📋 Priority Action List",expanded=True):
-            st.dataframe(pd.DataFrame(rv["priority_action_list"]),hide_index=True,use_container_width=True)
+            pal_clean=[{k:v for k,v in a.items()} for a in rv["priority_action_list"] if isinstance(a,dict)]
+            st.dataframe(pd.DataFrame(pal_clean),hide_index=True,use_container_width=True)
 
     fc=rv.get("format_compliance",{})
     if fc.get("checks"):
         with st.expander(f"📐 Format Compliance — Score: {fc.get('score',0)}"):
             for c in fc["checks"]:
-                icon={"PASS":"✅","FAIL":"❌","WARNING":"⚠️","CANNOT_VERIFY":"❔"}.get(c["status"],"❔")
-                st.markdown(f"{icon} **{c['item']}** — {c['detail']}")
+                icon={"PASS":"✅","FAIL":"❌","WARNING":"⚠️","CANNOT_VERIFY":"❔"}.get(c.get("status","CANNOT_VERIFY"),"❔")
+                st.markdown(f"{icon} **{c.get('item',c.get('check',c.get('name','?')))}** — {c.get('detail',c.get('description',''))}") 
 
     fm=rv.get("front_matter",{})
     if fm.get("sections"):
@@ -336,7 +332,7 @@ def show_review(rv):
             cols2=st.columns(3)
             for idx,s in enumerate(fm["sections"]):
                 with cols2[idx%3]:
-                    st.markdown(f"{'✅' if s['present'] else '❌'} **{s['name']}**")
+                    st.markdown(f"{'✅' if s.get('present',False) else '❌'} **{s.get('name',s.get('section','?'))}**")
                     if s.get("issues"): st.caption(f"⚠ {s['issues']}")
 
     if rv.get("chapters"):
@@ -345,7 +341,7 @@ def show_review(rv):
                 ok=ch.get("present",False); warn="" if ch.get("meets_2page_minimum",True) else "  ⚠️ Under 2-page min"
                 c1,c2=st.columns([5,1])
                 with c1:
-                    st.markdown(f"**{'✅' if ok else '❌'} Ch.{ch['number']}: {ch['title']}**{warn}")
+                    st.markdown(f"**{'✅' if ok else '❌'} Ch.{ch.get('number','?')}: {ch.get('title','Untitled')}**{warn}")
                     st.caption(f"~{ch.get('estimated_pages',0)} pages")
                     if ch.get("feedback"): st.write(ch["feedback"])
                     for iss in ch.get("issues",[]): st.markdown(f"  - ❌ {iss}")
