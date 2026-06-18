@@ -291,8 +291,7 @@ def call_gemini(file_data, system_prompt):
                 config=types.GenerateContentConfig(
                     system_instruction=system_prompt,
                     max_output_tokens=8192,
-                    temperature=0.1,
-                    response_mime_type="application/json")
+                    temperature=0.1)
                 response=client.models.generate_content(
                     model=model, contents=[prompt], config=config)
                 return robust_json_parse(response.text)
