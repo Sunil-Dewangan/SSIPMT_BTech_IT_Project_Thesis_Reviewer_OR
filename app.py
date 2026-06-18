@@ -217,46 +217,60 @@ def extract_file(uploaded_file):
         return {"text":text[:25000],"name":uploaded_file.name,"pages":est_pages}
     raise ValueError("Upload PDF or DOCX only.")
 
+def fix_json_strings(s):
+    """Escape unescaped control characters inside JSON string values.
+    The AI sometimes writes literal newlines/tabs inside strings, which
+    breaks the JSON parser even though the structure is otherwise valid."""
+    result = []
+    in_str = False
+    esc = False
+    for ch in s:
+        if esc:
+            result.append(ch); esc = False
+        elif ch == '\\' and in_str:
+            result.append(ch); esc = True
+        elif ch == '"':
+            in_str = not in_str; result.append(ch)
+        elif in_str and ch == '\n':
+            result.append('\\n')
+        elif in_str and ch == '\r':
+            result.append('\\r')
+        elif in_str and ch == '\t':
+            result.append('\\t')
+        else:
+            result.append(ch)
+    return ''.join(result)
+
 def robust_json_parse(raw):
-    """Robustly extract JSON even if response has extra text around it."""
+    """Extract and repair JSON from AI response."""
     clean = raw.strip()
-    # Strip markdown fences if present
     if "```" in clean:
         clean = clean.replace("```json","").replace("```","").strip()
-    # Find opening brace
     start = clean.find("{")
     if start < 0:
         raise ValueError("No JSON object found in response")
-    # Walk character by character to find the matching closing brace
+    # Walk to find matching closing brace
     depth=0; end_pos=-1; in_str=False; esc=False
     for i, ch in enumerate(clean[start:], start):
-        if esc:
-            esc=False; continue
-        if ch=="\\" and in_str:
-            esc=True; continue
-        if ch=='"' and not esc:
-            in_str = not in_str; continue
-        if in_str:
-            continue
-        if ch=="{":
-            depth+=1
+        if esc: esc=False; continue
+        if ch=="\\" and in_str: esc=True; continue
+        if ch=='"' and not esc: in_str = not in_str; continue
+        if in_str: continue
+        if ch=="{": depth+=1
         elif ch=="}":
             depth-=1
-            if depth==0:
-                end_pos=i+1; break
-    if end_pos > start:
-        try:
-            return json.loads(clean[start:end_pos])
-        except json.JSONDecodeError:
-            pass
-    # Fallback: try rfind last }
-    end_pos = clean.rfind("}")+1
-    if start >= 0 and end_pos > start:
-        try:
-            return json.loads(clean[start:end_pos])
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Could not parse JSON: {e}")
-    raise ValueError("No valid JSON found in AI response")
+            if depth==0: end_pos=i+1; break
+    candidate = clean[start:end_pos] if end_pos > start else clean[start:clean.rfind("}")+1]
+    # First try: parse as-is
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        pass
+    # Second try: fix unescaped control characters inside strings
+    try:
+        return json.loads(fix_json_strings(candidate))
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Could not parse JSON: {e}")
 
 def call_gemini(file_data, system_prompt):
     api_key=get_api_key()
