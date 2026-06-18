@@ -272,22 +272,44 @@ def robust_json_parse(raw):
     except json.JSONDecodeError as e:
         raise ValueError(f"Could not parse JSON: {e}")
 
+GEMINI_MODELS = [
+    "gemini-2.5-flash",       # primary — best quality
+    "gemini-2.5-flash-lite",  # fallback — lighter, less demand
+]
+
 def call_gemini(file_data, system_prompt):
     api_key=get_api_key()
     if not api_key: st.error("No Gemini API key found."); st.stop()
     client=genai.Client(api_key=api_key)
-    config=types.GenerateContentConfig(
-        system_instruction=system_prompt,
-        max_output_tokens=8192,        # 8192 prevents JSON truncation
-        temperature=0.1,
-        response_mime_type="application/json")
     prompt=(f"B.Tech Report ({file_data['name']}, ~{file_data.get('pages','?')} pages):\n\n"
             f"{file_data['text']}\n\nReview this report. Return only the JSON object.")
-    response=client.models.generate_content(
-        model="gemini-2.5-flash",      # current free model (2.0 deprecated Jun 2026)
-        contents=[prompt],
-        config=config)
-    return robust_json_parse(response.text)
+
+    last_error = None
+    for model in GEMINI_MODELS:
+        for attempt in range(3):  # 3 attempts per model
+            try:
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    max_output_tokens=8192,
+                    temperature=0.1,
+                    response_mime_type="application/json")
+                response=client.models.generate_content(
+                    model=model, contents=[prompt], config=config)
+                return robust_json_parse(response.text)
+            except Exception as e:
+                last_error = e
+                err = str(e)
+                if "503" in err or "UNAVAILABLE" in err or "high demand" in err.lower():
+                    wait = 20 * (attempt + 1)  # 20s, 40s, 60s
+                    st.toast(f"⏳ {model} busy — waiting {wait}s (attempt {attempt+1}/3)...")
+                    time.sleep(wait)
+                elif "429" in err or "RESOURCE_EXHAUSTED" in err:
+                    st.toast(f"⏳ Quota limit — waiting 60s...")
+                    time.sleep(60)
+                else:
+                    raise e  # non-retryable error — stop immediately
+
+    raise last_error or Exception("All Gemini models are currently unavailable. Please try again in a few minutes.")
 
 # ─── DISPLAY REVIEW ───
 def show_review(rv):
