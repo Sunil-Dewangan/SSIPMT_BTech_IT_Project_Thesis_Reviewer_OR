@@ -5,3 +5,4 @@ mammoth>=1.6.0
 fpdf2>=2.7.9
 pandas>=2.0.0
 python-dotenv>=1.0.0
+json-repair>=0.25.0
