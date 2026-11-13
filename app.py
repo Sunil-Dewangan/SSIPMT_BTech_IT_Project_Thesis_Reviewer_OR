@@ -73,6 +73,73 @@ REFERENCES: min 15, min 10 peer-reviewed, IEEE numbered [1][2], no Wikipedia.
 GENERAL: No first-person, no placeholder text, min 2 pages per chapter, total 40-80 pages.
 """
 
+# ── Fixed Scoring Weights (Changeable only in code; total = 100%) ──
+DEFAULT_WEIGHTS = {
+    "format": 15,
+    "front_matter": 10,
+    "chapters": 25,
+    "technical": 20,
+    "abstract": 5,
+    "references": 15,
+    "language": 10,
+}
+
+WEIGHT_INFO = {
+    "format": "Format (%)",
+    "front_matter": "Front Matter (%)",
+    "chapters": "Chapters (%)",
+    "technical": "Technical (%)",
+    "abstract": "Abstract (%)",
+    "references": "References (%)",
+    "language": "Language (%)",
+}
+
+RUBRIC_DATA = [
+    {
+        "Decision": "✅ APPROVED",
+        "Score Range": "85 – 100",
+        "Criteria & Action Required": (
+            "Meets all SSIPMT formatting, structural (14 chapters, front matter, 40–80 pages), "
+            "technical (DFDs, ER diagram, algorithms, 8 testing types), and IEEE reference standards. "
+            "Ready for final submission and viva-voce."
+        ),
+    },
+    {
+        "Decision": "⚠️ MINOR REVISION",
+        "Score Range": "75 – 84",
+        "Criteria & Action Required": (
+            "Technically sound and structurally complete, but has minor deviations in page setup, "
+            "figure/table captions, abstract word count (300–500 words), or IEEE citation formatting. "
+            "Student must fix highlighted minor/major issues before supervisor sign-off."
+        ),
+    },
+    {
+        "Decision": "🟠 MAJOR REVISION",
+        "Score Range": "40 – 74",
+        "Criteria & Action Required": (
+            "Significant gaps in mandatory chapters (< 2 pages per chapter), missing technical diagrams "
+            "(DFD Level 0/1/2, ER, Waterfall, or < 8 testing tables), fewer than 15 references (10 peer-reviewed), "
+            "or first-person writing violations. Requires substantial revision and re-review."
+        ),
+    },
+    {
+        "Decision": "❌ REJECTED",
+        "Score Range": "Below 40 (< 40)",
+        "Criteria & Action Required": (
+            "Fails to meet baseline SSIPMT B.Tech Project Report guidelines due to missing core chapters, "
+            "placeholder/copied text, absence of implementation/screenshots, or severe formatting non-compliance. "
+            "Report must be completely rewritten and resubmitted."
+        ),
+    },
+]
+
+# Default session set to 2026-27 (index 0)
+SESSIONS = ["2026-27", "2025-26", "2027-28", "2024-25", "2023-24"]
+
+for k, v in {"weights": dict(DEFAULT_WEIGHTS), "single_review": None, "batch_results": [], "review_meta": {}}.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
+
 def sem_label(sem):
     if not sem:
         return "-"
@@ -93,24 +160,6 @@ Official Guidelines:
 
 Return ONLY valid JSON, no markdown, no backticks:
 {{"project_title":"string","report_type":"string","student_names":["array"],"guide_name":"string","overall_score":number,"overall_recommendation":"APPROVED or MINOR_REVISION or MAJOR_REVISION or REJECTED","executive_summary":"3-4 sentences","format_compliance":{{"score":number,"checks":[{{"item":"string","status":"PASS or FAIL or WARNING or CANNOT_VERIFY","detail":"string"}}]}},"front_matter":{{"score":number,"sections":[{{"name":"string","present":true,"issues":"string or null"}}]}},"chapters":[{{"number":number,"title":"string","present":true,"estimated_pages":number,"meets_2page_minimum":true,"score":number,"issues":["array"],"strengths":["array"],"feedback":"string"}}],"technical_elements":{{"score":number,"dfd_level0":{{"present":true,"issues":"null"}},"dfd_level1":{{"present":true,"issues":"null"}},"dfd_level2":{{"present":true,"issues":"null"}},"er_diagram":{{"present":true,"issues":"null"}},"table_structures":{{"present":true,"count":number,"issues":"null"}},"algorithms":{{"present":true,"count":number,"properly_formatted":true,"issues":"null"}},"waterfall_diagram":{{"present":true,"issues":"null"}},"testing_types":{{"count":number,"types_found":["array"],"issues":"null"}}}},"abstract":{{"score":number,"estimated_word_count":number,"within_300_500":true,"has_keywords":true,"keyword_count":number,"covers_problem":true,"covers_solution":true,"covers_technologies":true,"covers_results":true,"has_citations":false,"issues":["array"],"feedback":"string"}},"references":{{"score":number,"total_count":number,"meets_minimum_15":true,"peer_reviewed_count":number,"meets_10_peer_reviewed":true,"ieee_format":"FULL or PARTIAL or POOR","issues":["array"],"feedback":"string"}},"language_quality":{{"score":number,"first_person_violations":["array"],"grammar_quality":"POOR or FAIR or GOOD or EXCELLENT","technical_accuracy":"POOR or FAIR or GOOD or EXCELLENT","academic_tone":"POOR or FAIR or GOOD or EXCELLENT","placeholder_text_found":false,"feedback":"string"}},"critical_issues":["array"],"major_issues":["array"],"minor_issues":["array"],"strengths":["array"],"priority_action_list":[{{"priority":number,"action":"string","location":"string","severity":"CRITICAL or MAJOR or MINOR"}}]}}"""
-
-# Scoring weights configured strictly in code (total = 100%)
-DEFAULT_WEIGHTS = {
-    "format": 15,
-    "front_matter": 10,
-    "chapters": 25,
-    "technical": 20,
-    "abstract": 5,
-    "references": 15,
-    "language": 10,
-}
-
-# Default session set to 2026-27 (index 0)
-SESSIONS = ["2026-27", "2025-26", "2027-28", "2024-25", "2023-24"]
-
-for k, v in {"weights": dict(DEFAULT_WEIGHTS), "single_review": None, "batch_results": [], "review_meta": {}}.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
 
 def get_api_key():
     raw = os.getenv("GEMINI_API_KEY", "")
@@ -135,11 +184,14 @@ def fulfillment_text(sem):
         return "In Fulfillment of the Requirements for the Award of B.Tech in Information Technology"
     return "In Partial Fulfillment of the Requirements for the Award of B.Tech in Information Technology"
 
+def get_chapters_avg(review):
+    chs = review.get("chapters", [])
+    return round(sum(c.get("score", 0) for c in chs) / len(chs)) if chs else 0
+
 def compute_weighted_score(review):
     wt = DEFAULT_WEIGHTS
     total = sum(wt.values()) or 1
-    chs = review.get("chapters", [])
-    ch_avg = (sum(c.get("score", 0) for c in chs) / len(chs)) if chs else 0
+    ch_avg = get_chapters_avg(review)
     dim = {
         "format": review.get("format_compliance", {}).get("score", 0),
         "front_matter": review.get("front_matter", {}).get("score", 0),
@@ -227,6 +279,7 @@ def call_gemini(file_data, system_prompt):
 def show_review(rv, meta=None):
     ws = compute_weighted_score(rv)
     rec = override_recommendation(ws)
+    ch_avg = get_chapters_avg(rv)
     meta = meta or st.session_state.get("review_meta", {})
 
     c1, c2, c3 = st.columns([4, 1, 1])
@@ -249,13 +302,18 @@ def show_review(rv, meta=None):
 
     st.caption("Score thresholds:  ≥85 = ✅ APPROVED  |  75–84 = ⚠️ MINOR REVISION  |  40–74 = 🟠 MAJOR REVISION  |  <40 = ❌ REJECTED")
     st.divider()
-    cols = st.columns(6)
-    for col, (name, key) in zip(cols, [
-        ("Format", "format_compliance"), ("Front Matter", "front_matter"),
-        ("Technical", "technical_elements"), ("Abstract", "abstract"),
-        ("References", "references"), ("Language", "language_quality")
-    ]):
-        col.metric(name, f"{score_emoji(rv.get(key, {}).get('score', 0))} {rv.get(key, {}).get('score', 0)}")
+    cols = st.columns(7)
+    dim_metrics = [
+        (f"Format ({DEFAULT_WEIGHTS['format']}%)", rv.get("format_compliance", {}).get("score", 0)),
+        (f"Front Matter ({DEFAULT_WEIGHTS['front_matter']}%)", rv.get("front_matter", {}).get("score", 0)),
+        (f"Chapters ({DEFAULT_WEIGHTS['chapters']}%)", ch_avg),
+        (f"Technical ({DEFAULT_WEIGHTS['technical']}%)", rv.get("technical_elements", {}).get("score", 0)),
+        (f"Abstract ({DEFAULT_WEIGHTS['abstract']}%)", rv.get("abstract", {}).get("score", 0)),
+        (f"References ({DEFAULT_WEIGHTS['references']}%)", rv.get("references", {}).get("score", 0)),
+        (f"Language ({DEFAULT_WEIGHTS['language']}%)", rv.get("language_quality", {}).get("score", 0)),
+    ]
+    for col, (name, sc_val) in zip(cols, dim_metrics):
+        col.metric(name, f"{score_emoji(sc_val)} {sc_val}")
     st.divider()
     for issues, label, exp in [
         (rv.get("critical_issues", []), "🚨 Critical Issues — Must fix", True),
@@ -285,7 +343,7 @@ def show_review(rv, meta=None):
                     if s.get("issues"):
                         st.caption(f"⚠ {s['issues']}")
     if rv.get("chapters"):
-        with st.expander("📚 Chapter-by-Chapter Review"):
+        with st.expander(f"📚 Chapter-by-Chapter Review — Avg Score: {ch_avg}"):
             for ch in rv["chapters"]:
                 ok = ch.get("present", False)
                 warn = "" if ch.get("meets_2page_minimum", True) else "  ⚠️ Under 2-page min"
@@ -384,14 +442,14 @@ def show_review(rv, meta=None):
         except Exception as e:
             st.error(f"Card error: {e}")
 
-# API KEY STATUS
+# ── API KEY STATUS ──
 if not get_api_key():
     with st.expander("🔑 Gemini API Key Required", expanded=True):
         st.session_state["gemini_key"] = st.text_input("Paste Gemini API key", type="password", help="aistudio.google.com/apikey")
 else:
     st.caption("API Ready")
 
-# REPORT INFORMATION
+# ── REPORT INFORMATION ──
 st.subheader("📋 Report Information")
 c1, c2, c3, c4 = st.columns(4)
 with c1:
@@ -422,9 +480,22 @@ current_meta = {
     "fulfillment": ff,
 }
 
+# ── SCORING WEIGHTS (READ-ONLY) & EVALUATION RUBRIC ──
+with st.expander("⚖️ Scoring Weights & Evaluation Rubric (Department Criteria)", expanded=True):
+    st.caption("Standard SSIPMT Department of IT evaluation weights (Total: 100%).")
+    wcols = st.columns(7)
+    for col, (k, label) in zip(wcols, WEIGHT_INFO.items()):
+        with col:
+            st.number_input(label, value=DEFAULT_WEIGHTS[k], disabled=True, key=f"w_{k}")
+    tot = sum(DEFAULT_WEIGHTS.values())
+    st.success(f"Total Weightage: {tot}% ✓")
+
+    st.markdown("##### 📊 Decision Rubric & Evaluation Criteria")
+    st.dataframe(pd.DataFrame(RUBRIC_DATA), hide_index=True, use_container_width=True)
+
 st.divider()
 
-# TABS
+# ── TABS ──
 tab1, tab2 = st.tabs(["📋  Single Review", "📦  Batch Review"])
 
 with tab1:
@@ -517,7 +588,7 @@ with tab2:
             if r["error"]:
                 rows.append({
                     "File": r["file"], "Students": "—", "Title": f"ERROR: {r['error'][:50]}", "Score": 0,
-                    "Format": 0, "Front Matter": 0, "Technical": 0, "Abstract": 0, "References": 0, "Language": 0,
+                    "Format": 0, "Front Matter": 0, "Chapters": 0, "Technical": 0, "Abstract": 0, "References": 0, "Language": 0,
                     "Recommendation": "ERROR"
                 })
             else:
@@ -529,6 +600,7 @@ with tab2:
                     "Score": r["score"],
                     "Format": rv.get("format_compliance", {}).get("score", 0),
                     "Front Matter": rv.get("front_matter", {}).get("score", 0),
+                    "Chapters": get_chapters_avg(rv),
                     "Technical": rv.get("technical_elements", {}).get("score", 0),
                     "Abstract": rv.get("abstract", {}).get("score", 0),
                     "References": rv.get("references", {}).get("score", 0),
