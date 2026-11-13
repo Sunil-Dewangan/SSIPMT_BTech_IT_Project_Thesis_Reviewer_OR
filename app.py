@@ -20,7 +20,7 @@ from pdf_generator import generate_full_report, generate_report_card, generate_c
 
 load_dotenv()
 
-MAX_PAGES = 80
+MAX_PAGES = 150
 
 st.set_page_config(page_title="SSIPMT Thesis Reviewer", page_icon="🎓",
                    layout="wide", initial_sidebar_state="collapsed")
@@ -44,7 +44,7 @@ st.markdown("""
 <hr style='border:none; border-top:2px solid #e5e7eb; margin-bottom:18px;'/>
 """, unsafe_allow_html=True)
 
-GUIDELINES = """
+GUIDELINES = f"""
 SSIPMT B.Tech Project Report Guidelines — Dept. of IT
 
 PAGE SETUP: A4, all margins 1 inch, Times New Roman 12pt, 1.5 line spacing, 0pt paragraph spacing, box page border on every page.
@@ -70,7 +70,7 @@ Ch13 System Security Measures
 Ch14 Conclusion and Future Scope: future enhancements table
 
 REFERENCES: min 15, min 10 peer-reviewed, IEEE numbered [1][2], no Wikipedia.
-GENERAL: No first-person, no placeholder text, min 2 pages per chapter, total 40-80 pages.
+GENERAL: No first-person, no placeholder text, min 2 pages per chapter, total 40-{MAX_PAGES} pages (up to {MAX_PAGES} pages allowed).
 """
 
 # ── Fixed Scoring Weights (Changeable only in code; total = 100%) ──
@@ -99,7 +99,7 @@ RUBRIC_DATA = [
         "Decision": "✅ APPROVED",
         "Score Range": "85 – 100",
         "Criteria & Action Required": (
-            "Meets all SSIPMT formatting, structural (14 chapters, front matter, 40–80 pages), "
+            f"Meets all SSIPMT formatting, structural (14 chapters, front matter, 40–{MAX_PAGES} pages), "
             "technical (DFDs, ER diagram, algorithms, 8 testing types), and IEEE reference standards. "
             "Ready for final submission and viva-voce."
         ),
@@ -220,7 +220,7 @@ def count_pdf_pages(pdf_bytes):
     doc.close()
     return n
 
-def extract_text_from_pdf(pdf_bytes, max_chars=30000):
+def extract_text_from_pdf(pdf_bytes, max_chars=60000):
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     total = len(doc)
     front_end = int(total * 0.75)
@@ -240,7 +240,10 @@ def extract_file(uploaded_file):
     if name.endswith(".pdf"):
         pages = count_pdf_pages(raw)
         if pages > MAX_PAGES:
-            raise ValueError(f"This report has **{pages} pages**. Maximum allowed is **{MAX_PAGES} pages** (SSIPMT guideline: 40-80 pages). Please reduce the report and re-upload.")
+            raise ValueError(
+                f"This report has **{pages} pages**. Maximum allowed is **{MAX_PAGES} pages** "
+                f"(SSIPMT guideline: 40–{MAX_PAGES} pages). Please reduce the report and re-upload."
+            )
         text = extract_text_from_pdf(raw)
         if not text.strip():
             raise ValueError("Could not extract text. PDF may be scanned. Try DOCX format.")
@@ -252,8 +255,11 @@ def extract_file(uploaded_file):
             raise ValueError("Could not extract text from DOCX.")
         est_pages = len(text.split()) // 300
         if est_pages > MAX_PAGES:
-            raise ValueError(f"Document estimated at ~{est_pages} pages. Maximum allowed is {MAX_PAGES} pages.")
-        return {"text": text[:30000], "name": uploaded_file.name, "pages": est_pages}
+            raise ValueError(
+                f"Document estimated at ~{est_pages} pages. Maximum allowed is **{MAX_PAGES} pages** "
+                f"(SSIPMT guideline: 40–{MAX_PAGES} pages)."
+            )
+        return {"text": text[:60000], "name": uploaded_file.name, "pages": est_pages}
     raise ValueError("Upload PDF or DOCX only.")
 
 def call_gemini(file_data, system_prompt):
@@ -499,7 +505,7 @@ st.divider()
 tab1, tab2 = st.tabs(["📋  Single Review", "📦  Batch Review"])
 
 with tab1:
-    st.info(f"📌 Maximum **{MAX_PAGES} pages** per report (SSIPMT guideline: 40–80 pages). Files exceeding this limit will not be processed.")
+    st.info(f"📌 Maximum **{MAX_PAGES} pages** per report (SSIPMT guideline: 40–{MAX_PAGES} pages). Files exceeding this limit will not be processed.")
     uploaded = st.file_uploader("Drag and drop PDF or DOCX file here", type=["pdf", "docx"], key="single_upload",
                                 help=f"PDF or DOCX · Max {MAX_PAGES} pages · Text-based PDFs only")
     if uploaded:
@@ -545,7 +551,7 @@ with tab1:
         show_review(st.session_state.single_review, st.session_state.get("review_meta") or current_meta)
 
 with tab2:
-    st.info(f"📌 Each file must be under **{MAX_PAGES} pages**. Files exceeding limit are skipped automatically.")
+    st.info(f"📌 Each file must be up to **{MAX_PAGES} pages** (SSIPMT guideline: 40–{MAX_PAGES} pages). Files exceeding this limit are skipped automatically.")
     batch_files = st.file_uploader("Drag and drop multiple PDF or DOCX files here",
                                    type=["pdf", "docx"], accept_multiple_files=True, key="batch_upload")
     if batch_files:
