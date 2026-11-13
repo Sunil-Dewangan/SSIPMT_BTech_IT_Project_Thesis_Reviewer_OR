@@ -1,9 +1,3 @@
-"""
-SSIPMT B.Tech Project Thesis Report Reviewer
-Department of Information Technology, SSIPMT Raipur
-Developed by Sunil Kumar Dewangan
-"""
-
 import streamlit as st
 from openai import OpenAI
 import json
@@ -37,13 +31,14 @@ st.markdown("""
 <div style='text-align:center; padding:18px 0 10px 0;'>
   <span style='font-size:36px;'>🎓</span>
   <h2 style='margin:4px 0 2px 0; color:#1e3a8a; font-size:26px;'>SSIPMT Project Thesis Report Reviewer</h2>
-  <p style='margin:0; color:#6b7280; font-size:13px;'>
+  <p style='margin:0; color:#6b7280; font-size:25px;'>
     Department of Information Technology &nbsp;|&nbsp; Developed by <strong>Sunil Kumar Dewangan</strong>
   </p>
 </div>
 <hr style='border:none; border-top:2px solid #e5e7eb; margin-bottom:18px;'/>
 """, unsafe_allow_html=True)
 
+# ─── GUIDELINES ───
 GUIDELINES = f"""
 SSIPMT B.Tech Project Report Guidelines — Dept. of IT
 
@@ -70,20 +65,77 @@ Ch13 System Security Measures
 Ch14 Conclusion and Future Scope: future enhancements table
 
 REFERENCES: min 15, min 10 peer-reviewed, IEEE numbered [1][2], no Wikipedia.
-GENERAL: No first-person, no placeholder text, min 2 pages per chapter, total 40-{MAX_PAGES} pages (up to {MAX_PAGES} pages allowed).
+GENERAL: No first-person, no placeholder text, min 2 pages per chapter, total 40-{MAX_PAGES} pages.
 """
 
-# ── Fixed Scoring Weights (Changeable only in code; total = 100%) ──
-DEFAULT_WEIGHTS = {
-    "format": 15,
-    "front_matter": 10,
-    "chapters": 25,
-    "technical": 20,
-    "abstract": 5,
-    "references": 15,
-    "language": 10,
-}
+def sem_label(sem):
+    if not sem:
+        return "-"
+    suffix = {1: "st", 2: "nd", 3: "rd"}.get(sem, "th")
+    return f"{sem}{suffix} Semester"
 
+# ─── SYSTEM PROMPT ───
+def build_system_prompt(session, sub_name, sub_code, semester, fulfillment):
+    return f"""You are an extremely strict B.Tech project report EXAMINER for SSIPMT Raipur, Dept. of IT.
+Your job is to FIND FAILURES and DEFICIENCIES — do not be generous or give benefit of the doubt.
+
+Review context: Session={session}, Subject={sub_name} ({sub_code}), Semester={semester}, {fulfillment}
+
+Official SSIPMT Guidelines:
+{GUIDELINES}
+
+======= MANDATORY STRICT SCORING RULES =======
+
+RULE 1 — DIAGRAMS ARE INVISIBLE TO YOU (CRITICAL):
+You are reviewing EXTRACTED TEXT only. DFDs, ER diagrams, flowcharts, waterfall diagrams are IMAGES — you cannot see them.
+- A figure caption alone (e.g. "Fig 5.1: DFD Level 0") is NOT sufficient to mark present=true
+- To credit a DFD: text must describe entities, processes, data flows in prose detail
+- To credit ER diagram: entity names, attributes, relationships must appear in text
+- To credit Waterfall: phases must be listed and explained
+- DEFAULT all diagram fields to present=false unless text clearly proves otherwise
+
+RULE 2 — CHAPTER DEPTH from visible word count (250 words = 1 page):
+- < 150 words visible → score 0-15, meets_2page_minimum=false
+- 150-350 words → score 15-35, meets_2page_minimum=false
+- 350-500 words → score 35-55, meets_2page_minimum=true (marginal)
+- 500-800 words with good content → score 55-75
+- > 800 words with high quality → score 75-100
+
+RULE 3 — FAIL BY DEFAULT:
+- No clear evidence = FAIL (not CANNOT_VERIFY)
+- Partial evidence = WARNING only
+- PASS only when complete, correct content is clearly present
+- CANNOT_VERIFY must LOWER the score, not keep it neutral
+
+RULE 4 — COUNT REFERENCES:
+Count [1] [2] [3] style citations visible in text.
+- < 15 found → meets_minimum_15=false, references score <= 30
+- < 10 journal/conference → meets_10_peer_reviewed=false
+- Missing DOI/volume/pages → ieee_format=POOR
+
+RULE 5 — FIRST PERSON:
+Search for: "I ", "I've", "we ", "we've", "our ", "my "
+Any occurrence = violation. List exact quotes found.
+
+RULE 6 — OVERALL SCORE (be PESSIMISTIC):
+- 95-100: ALL requirements met exceptionally — extremely rare
+- 75-94: Most requirements met, only minor gaps
+- 50-74: Multiple thin chapters, diagrams unverifiable, reference gaps
+- 25-49: Several missing chapters, major structural problems
+- 0-24: Critical failures throughout
+WHEN UNCERTAIN: score LOWER, not higher.
+
+CRITICAL OUTPUT RULES:
+- Return ONLY a valid JSON object, nothing else before or after
+- The chapters array MUST contain ALL 14 chapters (Ch1 through Ch14) — never fewer
+- Keep feedback to 1-2 sentences per chapter to stay within token limits
+- Keep issues and strengths to max 3 items each per chapter
+
+JSON structure (chapters array must have 14 entries, one per chapter):
+{{"project_title":"string","report_type":"string","student_names":["string"],"guide_name":"string","overall_score":0,"overall_recommendation":"MAJOR_REVISION","executive_summary":"2 sentences","format_compliance":{{"score":0,"checks":[{{"item":"string","status":"FAIL","detail":"string"}},{{"item":"string","status":"FAIL","detail":"string"}}]}},"front_matter":{{"score":0,"sections":[{{"name":"Declaration","present":false,"issues":"string"}},{{"name":"Abstract","present":false,"issues":"string"}}]}},"chapters":[{{"number":1,"title":"Introduction","present":false,"estimated_pages":0,"meets_2page_minimum":false,"score":0,"issues":["string"],"strengths":[],"feedback":"1-2 sentences"}},{{"number":2,"title":"Previous Work","present":false,"estimated_pages":0,"meets_2page_minimum":false,"score":0,"issues":["string"],"strengths":[],"feedback":"1-2 sentences"}}],"technical_elements":{{"score":0,"dfd_level0":{{"present":false,"issues":"string"}},"dfd_level1":{{"present":false,"issues":"string"}},"dfd_level2":{{"present":false,"issues":"string"}},"er_diagram":{{"present":false,"issues":"string"}},"table_structures":{{"present":false,"count":0,"issues":"string"}},"algorithms":{{"present":false,"count":0,"properly_formatted":false,"issues":"string"}},"waterfall_diagram":{{"present":false,"issues":"string"}},"testing_types":{{"count":0,"types_found":["string"],"issues":"string"}}}},"abstract":{{"score":0,"estimated_word_count":0,"within_300_500":false,"has_keywords":false,"keyword_count":0,"covers_problem":false,"covers_solution":false,"covers_technologies":false,"covers_results":false,"has_citations":false,"issues":["string"],"feedback":"string"}},"references":{{"score":0,"total_count":0,"meets_minimum_15":false,"peer_reviewed_count":0,"meets_10_peer_reviewed":false,"ieee_format":"POOR","issues":["string"],"feedback":"string"}},"language_quality":{{"score":0,"first_person_violations":["string"],"grammar_quality":"FAIR","technical_accuracy":"FAIR","academic_tone":"FAIR","placeholder_text_found":false,"feedback":"string"}},"critical_issues":["string"],"major_issues":["string"],"minor_issues":["string"],"strengths":["string"],"priority_action_list":[{{"priority":1,"action":"string","location":"string","severity":"CRITICAL"}},{{"priority":2,"action":"string","location":"string","severity":"MAJOR"}}]}}"""
+
+# ─── DEFAULTS (Weights changeable only in code) ───
+DEFAULT_WEIGHTS = {"format": 15, "front_matter": 10, "chapters": 25, "technical": 20, "abstract": 5, "references": 15, "language": 10}
 WEIGHT_INFO = {
     "format": "Format (%)",
     "front_matter": "Front Matter (%)",
@@ -93,32 +145,32 @@ WEIGHT_INFO = {
     "references": "References (%)",
     "language": "Language (%)",
 }
+SESSIONS = ["2026-27", "2025-26", "2024-25", "2027-28", "2023-24"]
 
 RUBRIC_DATA = [
     {
         "Decision": "✅ APPROVED",
-        "Score Range": "85 – 100",
+        "Score Range": "95 – 100",
         "Criteria & Action Required": (
-            f"Meets all SSIPMT formatting, structural (14 chapters, front matter, 40–{MAX_PAGES} pages), "
-            "technical (DFDs, ER diagram, algorithms, 8 testing types), and IEEE reference standards. "
-            "Ready for final submission and viva-voce."
+            f"All SSIPMT formatting, structural (14 chapters, front matter, 40–{MAX_PAGES} pages), "
+            "technical (DFDs, ER diagram, algorithms, 8 testing types), and IEEE reference standards met exceptionally. "
+            "Ready for final submission."
         ),
     },
     {
         "Decision": "⚠️ MINOR REVISION",
-        "Score Range": "75 – 84",
+        "Score Range": "75 – 94",
         "Criteria & Action Required": (
-            "Technically sound and structurally complete, but has minor deviations in page setup, "
-            "figure/table captions, abstract word count (300–500 words), or IEEE citation formatting. "
-            "Student must fix highlighted minor/major issues before supervisor sign-off."
+            "Most requirements met with only minor gaps in formatting, captions, abstract word count (300–500 words), "
+            "or citation details. Student must correct highlighted issues before final sign-off."
         ),
     },
     {
         "Decision": "🟠 MAJOR REVISION",
         "Score Range": "40 – 74",
         "Criteria & Action Required": (
-            "Significant gaps in mandatory chapters (< 2 pages per chapter), missing technical diagrams "
-            "(DFD Level 0/1/2, ER, Waterfall, or < 8 testing tables), fewer than 15 references (10 peer-reviewed), "
+            "Multiple thin chapters (< 2 pages per chapter), unverifiable/missing technical diagrams "
+            "(DFD Level 0/1/2, ER, Waterfall, testing tables), reference gaps (< 15 total or < 10 peer-reviewed), "
             "or first-person writing violations. Requires substantial revision and re-review."
         ),
     },
@@ -126,51 +178,31 @@ RUBRIC_DATA = [
         "Decision": "❌ REJECTED",
         "Score Range": "Below 40 (< 40)",
         "Criteria & Action Required": (
-            "Fails to meet baseline SSIPMT B.Tech Project Report guidelines due to missing core chapters, "
-            "placeholder/copied text, absence of implementation/screenshots, or severe formatting non-compliance. "
-            "Report must be completely rewritten and resubmitted."
+            "Critical failures throughout: missing mandatory chapters, severe structural non-compliance, "
+            "placeholder text, or lack of technical implementation. Must be rewritten and resubmitted."
         ),
     },
 ]
-
-# Default session set to 2026-27 (index 0)
-SESSIONS = ["2026-27", "2025-26", "2027-28", "2024-25", "2023-24"]
 
 for k, v in {"weights": dict(DEFAULT_WEIGHTS), "single_review": None, "batch_results": [], "review_meta": {}}.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
-def sem_label(sem):
-    if not sem:
-        return "-"
-    suffix = {1: "st", 2: "nd", 3: "rd"}.get(sem, "th")
-    return f"{sem}{suffix} Semester"
-
-def build_system_prompt(session, sub_name, sub_code, semester, fulfillment):
-    return f"""You are a strict, thorough, and fair B.Tech project report reviewer for SSIPMT Raipur, Dept. of IT.
-
-Review context:
-- Session: {session}
-- Subject: {sub_name} (Code: {sub_code})
-- Semester: {sem_label(semester)}
-- Degree: {fulfillment}
-
-Official Guidelines:
-{GUIDELINES}
-
-Return ONLY valid JSON, no markdown, no backticks:
-{{"project_title":"string","report_type":"string","student_names":["array"],"guide_name":"string","overall_score":number,"overall_recommendation":"APPROVED or MINOR_REVISION or MAJOR_REVISION or REJECTED","executive_summary":"3-4 sentences","format_compliance":{{"score":number,"checks":[{{"item":"string","status":"PASS or FAIL or WARNING or CANNOT_VERIFY","detail":"string"}}]}},"front_matter":{{"score":number,"sections":[{{"name":"string","present":true,"issues":"string or null"}}]}},"chapters":[{{"number":number,"title":"string","present":true,"estimated_pages":number,"meets_2page_minimum":true,"score":number,"issues":["array"],"strengths":["array"],"feedback":"string"}}],"technical_elements":{{"score":number,"dfd_level0":{{"present":true,"issues":"null"}},"dfd_level1":{{"present":true,"issues":"null"}},"dfd_level2":{{"present":true,"issues":"null"}},"er_diagram":{{"present":true,"issues":"null"}},"table_structures":{{"present":true,"count":number,"issues":"null"}},"algorithms":{{"present":true,"count":number,"properly_formatted":true,"issues":"null"}},"waterfall_diagram":{{"present":true,"issues":"null"}},"testing_types":{{"count":number,"types_found":["array"],"issues":"null"}}}},"abstract":{{"score":number,"estimated_word_count":number,"within_300_500":true,"has_keywords":true,"keyword_count":number,"covers_problem":true,"covers_solution":true,"covers_technologies":true,"covers_results":true,"has_citations":false,"issues":["array"],"feedback":"string"}},"references":{{"score":number,"total_count":number,"meets_minimum_15":true,"peer_reviewed_count":number,"meets_10_peer_reviewed":true,"ieee_format":"FULL or PARTIAL or POOR","issues":["array"],"feedback":"string"}},"language_quality":{{"score":number,"first_person_violations":["array"],"grammar_quality":"POOR or FAIR or GOOD or EXCELLENT","technical_accuracy":"POOR or FAIR or GOOD or EXCELLENT","academic_tone":"POOR or FAIR or GOOD or EXCELLENT","placeholder_text_found":false,"feedback":"string"}},"critical_issues":["array"],"major_issues":["array"],"minor_issues":["array"],"strengths":["array"],"priority_action_list":[{{"priority":number,"action":"string","location":"string","severity":"CRITICAL or MAJOR or MINOR"}}]}}"""
-
+# ─── HELPERS ───
 def get_api_key():
-    raw = os.getenv("GEMINI_API_KEY", "")
-    if not raw:
-        try:
-            raw = st.secrets.get("GEMINI_API_KEY", "")
-        except:
-            pass
-    if not raw:
-        raw = st.session_state.get("gemini_key", "")
-    return raw.strip().strip("\"'") if raw else ""
+    # 1. Environment variable
+    key = os.getenv("GEMINI_API_KEY", "")
+    if key:
+        return key.strip().strip("\"'")
+    # 2. Streamlit secrets (Streamlit Cloud)
+    try:
+        key = st.secrets["GEMINI_API_KEY"]
+        if key:
+            return str(key).strip().strip("\"'")
+    except Exception:
+        pass
+    # 3. Manually entered in session
+    return st.session_state.get("gemini_key", "").strip()
 
 def score_emoji(s):
     return "🟢" if s >= 80 else ("🟡" if s >= 60 else "🔴")
@@ -184,14 +216,11 @@ def fulfillment_text(sem):
         return "In Fulfillment of the Requirements for the Award of B.Tech in Information Technology"
     return "In Partial Fulfillment of the Requirements for the Award of B.Tech in Information Technology"
 
-def get_chapters_avg(review):
-    chs = review.get("chapters", [])
-    return round(sum(c.get("score", 0) for c in chs) / len(chs)) if chs else 0
-
 def compute_weighted_score(review):
     wt = DEFAULT_WEIGHTS
     total = sum(wt.values()) or 1
-    ch_avg = get_chapters_avg(review)
+    chs = review.get("chapters", [])
+    ch_avg = (sum(c.get("score", 0) for c in chs) / len(chs)) if chs else 0
     dim = {
         "format": review.get("format_compliance", {}).get("score", 0),
         "front_matter": review.get("front_matter", {}).get("score", 0),
@@ -204,8 +233,7 @@ def compute_weighted_score(review):
     return round(sum(dim[k] * (wt[k] / total) for k in wt))
 
 def override_recommendation(weighted_score):
-    """Override AI recommendation based on weighted score thresholds."""
-    if weighted_score >= 85:
+    if weighted_score >= 95:
         return "APPROVED"
     elif weighted_score >= 75:
         return "MINOR_REVISION"
@@ -220,7 +248,7 @@ def count_pdf_pages(pdf_bytes):
     doc.close()
     return n
 
-def extract_text_from_pdf(pdf_bytes, max_chars=60000):
+def extract_text_from_pdf(pdf_bytes, max_chars=25000):
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     total = len(doc)
     front_end = int(total * 0.75)
@@ -240,10 +268,7 @@ def extract_file(uploaded_file):
     if name.endswith(".pdf"):
         pages = count_pdf_pages(raw)
         if pages > MAX_PAGES:
-            raise ValueError(
-                f"This report has **{pages} pages**. Maximum allowed is **{MAX_PAGES} pages** "
-                f"(SSIPMT guideline: 40–{MAX_PAGES} pages). Please reduce the report and re-upload."
-            )
+            raise ValueError(f"This report has **{pages} pages**. Maximum allowed is **{MAX_PAGES} pages** (SSIPMT guideline: 40–{MAX_PAGES} pages). Files exceeding this limit will not be processed.")
         text = extract_text_from_pdf(raw)
         if not text.strip():
             raise ValueError("Could not extract text. PDF may be scanned. Try DOCX format.")
@@ -255,37 +280,94 @@ def extract_file(uploaded_file):
             raise ValueError("Could not extract text from DOCX.")
         est_pages = len(text.split()) // 300
         if est_pages > MAX_PAGES:
-            raise ValueError(
-                f"Document estimated at ~{est_pages} pages. Maximum allowed is **{MAX_PAGES} pages** "
-                f"(SSIPMT guideline: 40–{MAX_PAGES} pages)."
-            )
-        return {"text": text[:60000], "name": uploaded_file.name, "pages": est_pages}
+            raise ValueError(f"Document estimated at ~{est_pages} pages. Maximum allowed is **{MAX_PAGES} pages** (SSIPMT guideline: 40–{MAX_PAGES} pages). Files exceeding this limit will not be processed.")
+        return {"text": text[:25000], "name": uploaded_file.name, "pages": est_pages}
     raise ValueError("Upload PDF or DOCX only.")
+
+# OpenAI-compatible client for Gemini — more reliable than google-genai SDK
+def make_gemini_client(api_key):
+    return OpenAI(
+        api_key=api_key,
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+    )
+
+def robust_json_parse(raw):
+    """Extract and repair JSON from AI response using json_repair library."""
+    if not raw or not raw.strip():
+        raise ValueError("Empty response from AI — please try again.")
+    clean = raw.strip()
+    # Strip markdown fences
+    if "```" in clean:
+        clean = clean.replace("```json", "").replace("```", "").strip()
+    # Find the JSON object boundaries
+    start = clean.find("{")
+    if start < 0:
+        raise ValueError("No JSON object found in response")
+    # Try 1: direct parse on everything from first {
+    candidate = clean[start:]
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        pass
+    # Try 2: json_repair — handles unescaped quotes, bare newlines,
+    # missing commas, and all common LLM JSON formatting errors
+    try:
+        repaired = repair_json(candidate)
+        return json.loads(repaired)
+    except Exception as e:
+        raise ValueError(f"Could not parse JSON: {e}")
+
+GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
 
 def call_gemini(file_data, system_prompt):
     api_key = get_api_key()
     if not api_key:
-        st.error("No API key found.")
+        st.error("No Gemini API key found.")
         st.stop()
-    client = genai.Client(api_key=api_key)
-    config = types.GenerateContentConfig(
-        system_instruction=system_prompt, max_output_tokens=4096,
-        temperature=0.1, response_mime_type="application/json")
+    client = make_gemini_client(api_key)
     prompt = (f"B.Tech Report ({file_data['name']}, ~{file_data.get('pages','?')} pages):\n\n"
-              f"{file_data['text']}\n\nReview against SSIPMT guidelines. Return only JSON.")
-    response = client.models.generate_content(model="gemini-1.5-flash", contents=[prompt], config=config)
-    raw = response.text
-    clean = raw.replace("```json", "").replace("```", "").strip()
-    s = clean.find("{")
-    e = clean.rfind("}") + 1
-    if s >= 0 and e > s:
-        clean = clean[s:e]
-    return json.loads(clean)
+              f"{file_data['text']}\n\nReview this report strictly. Return ONLY the JSON object, nothing else.")
 
+    last_error = None
+    for model in GEMINI_MODELS:
+        for attempt in range(3):
+            try:
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=16384,
+                    temperature=0.1
+                )
+                raw = response.choices[0].message.content
+                if not raw or not raw.strip():
+                    raise ValueError("Empty response — retrying")
+                return robust_json_parse(raw)
+            except Exception as e:
+                last_error = e
+                err = str(e)
+                if "503" in err or "UNAVAILABLE" in err or "high demand" in err.lower() or "overload" in err.lower():
+                    wait = 20 * (attempt + 1)
+                    st.toast(f"⏳ {model} busy — waiting {wait}s (attempt {attempt+1}/3)...")
+                    time.sleep(wait)
+                elif "429" in err or "RESOURCE_EXHAUSTED" in err or "quota" in err.lower():
+                    st.toast("⏳ Quota limit — waiting 60s...")
+                    time.sleep(60)
+                elif "Empty response" in err:
+                    st.toast(f"⏳ Empty response from {model} — retrying...")
+                    time.sleep(10)
+                else:
+                    raise e
+
+    raise last_error or Exception("All Gemini models unavailable. Please try again in a few minutes.")
+
+
+# ─── DISPLAY REVIEW ───
 def show_review(rv, meta=None):
     ws = compute_weighted_score(rv)
     rec = override_recommendation(ws)
-    ch_avg = get_chapters_avg(rv)
     meta = meta or st.session_state.get("review_meta", {})
 
     c1, c2, c3 = st.columns([4, 1, 1])
@@ -305,22 +387,18 @@ def show_review(rv, meta=None):
     with c3:
         st.metric("Decision", "")
         st.markdown(f"**{rec_icon(rec)}**")
+    st.caption("Thresholds:  ≥95 = ✅ APPROVED  |  75-94 = ⚠️ MINOR REVISION  |  40-74 = 🟠 MAJOR REVISION  |  <40 = ❌ REJECTED")
+    st.divider()
 
-    st.caption("Score thresholds:  ≥85 = ✅ APPROVED  |  75–84 = ⚠️ MINOR REVISION  |  40–74 = 🟠 MAJOR REVISION  |  <40 = ❌ REJECTED")
+    cols = st.columns(6)
+    for col, (name, key) in zip(cols, [
+        ("Format", "format_compliance"), ("Front Matter", "front_matter"),
+        ("Technical", "technical_elements"), ("Abstract", "abstract"),
+        ("References", "references"), ("Language", "language_quality")
+    ]):
+        col.metric(name, f"{score_emoji(rv.get(key, {}).get('score', 0))} {rv.get(key, {}).get('score', 0)}")
     st.divider()
-    cols = st.columns(7)
-    dim_metrics = [
-        (f"Format ({DEFAULT_WEIGHTS['format']}%)", rv.get("format_compliance", {}).get("score", 0)),
-        (f"Front Matter ({DEFAULT_WEIGHTS['front_matter']}%)", rv.get("front_matter", {}).get("score", 0)),
-        (f"Chapters ({DEFAULT_WEIGHTS['chapters']}%)", ch_avg),
-        (f"Technical ({DEFAULT_WEIGHTS['technical']}%)", rv.get("technical_elements", {}).get("score", 0)),
-        (f"Abstract ({DEFAULT_WEIGHTS['abstract']}%)", rv.get("abstract", {}).get("score", 0)),
-        (f"References ({DEFAULT_WEIGHTS['references']}%)", rv.get("references", {}).get("score", 0)),
-        (f"Language ({DEFAULT_WEIGHTS['language']}%)", rv.get("language_quality", {}).get("score", 0)),
-    ]
-    for col, (name, sc_val) in zip(cols, dim_metrics):
-        col.metric(name, f"{score_emoji(sc_val)} {sc_val}")
-    st.divider()
+
     for issues, label, exp in [
         (rv.get("critical_issues", []), "🚨 Critical Issues — Must fix", True),
         (rv.get("major_issues", []), "⚠️ Major Issues", True),
@@ -330,32 +408,37 @@ def show_review(rv, meta=None):
             with st.expander(f"{label} ({len(issues)})", expanded=exp):
                 for i in issues:
                     st.markdown(f"- {i}")
+
     if rv.get("priority_action_list"):
         with st.expander("📋 Priority Action List", expanded=True):
-            st.dataframe(pd.DataFrame(rv["priority_action_list"]), hide_index=True, use_container_width=True)
+            pal_clean = [{k: v for k, v in a.items()} for a in rv["priority_action_list"] if isinstance(a, dict)]
+            st.dataframe(pd.DataFrame(pal_clean), hide_index=True, use_container_width=True)
+
     fc = rv.get("format_compliance", {})
     if fc.get("checks"):
         with st.expander(f"📐 Format Compliance — Score: {fc.get('score', 0)}"):
             for c in fc["checks"]:
-                icon = {"PASS": "✅", "FAIL": "❌", "WARNING": "⚠️", "CANNOT_VERIFY": "❔"}.get(c["status"], "❔")
-                st.markdown(f"{icon} **{c['item']}** — {c['detail']}")
+                icon = {"PASS": "✅", "FAIL": "❌", "WARNING": "⚠️", "CANNOT_VERIFY": "❔"}.get(c.get("status", "CANNOT_VERIFY"), "❔")
+                st.markdown(f"{icon} **{c.get('item', c.get('check', c.get('name', '?')))}** — {c.get('detail', c.get('description', ''))}")
+
     fm = rv.get("front_matter", {})
     if fm.get("sections"):
         with st.expander(f"📄 Front Matter — Score: {fm.get('score', 0)}"):
             cols2 = st.columns(3)
             for idx, s in enumerate(fm["sections"]):
                 with cols2[idx % 3]:
-                    st.markdown(f"{'✅' if s['present'] else '❌'} **{s['name']}**")
+                    st.markdown(f"{'✅' if s.get('present', False) else '❌'} **{s.get('name', s.get('section', '?'))}**")
                     if s.get("issues"):
                         st.caption(f"⚠ {s['issues']}")
+
     if rv.get("chapters"):
-        with st.expander(f"📚 Chapter-by-Chapter Review — Avg Score: {ch_avg}"):
+        with st.expander("📚 Chapter-by-Chapter Review"):
             for ch in rv["chapters"]:
                 ok = ch.get("present", False)
                 warn = "" if ch.get("meets_2page_minimum", True) else "  ⚠️ Under 2-page min"
                 c1, c2 = st.columns([5, 1])
                 with c1:
-                    st.markdown(f"**{'✅' if ok else '❌'} Ch.{ch['number']}: {ch['title']}**{warn}")
+                    st.markdown(f"**{'✅' if ok else '❌'} Ch.{ch.get('number', '?')}: {ch.get('title', 'Untitled')}**{warn}")
                     st.caption(f"~{ch.get('estimated_pages', 0)} pages")
                     if ch.get("feedback"):
                         st.write(ch["feedback"])
@@ -367,6 +450,7 @@ def show_review(rv, meta=None):
                     if ok:
                         st.metric("", f"{score_emoji(ch.get('score', 0))} {ch.get('score', 0)}")
                 st.divider()
+
     te = rv.get("technical_elements", {})
     if te:
         with st.expander(f"⚙️ Technical Elements — Score: {te.get('score', 0)}"):
@@ -384,6 +468,7 @@ def show_review(rv, meta=None):
                     st.caption(f"  ↳ {el['issues']}")
             tst = te.get("testing_types", {})
             st.markdown(f"**Testing:** {tst.get('count', 0)}/8 — {', '.join(tst.get('types_found', []) or ['None'])}")
+
     ab = rv.get("abstract", {})
     if ab:
         with st.expander(f"📝 Abstract — Score: {ab.get('score', 0)}"):
@@ -399,6 +484,7 @@ def show_review(rv, meta=None):
                 st.markdown(f"- No citations: {'✅' if not ab.get('has_citations') else '❌ Remove'}")
             if ab.get("feedback"):
                 st.info(ab["feedback"])
+
     ref = rv.get("references", {})
     if ref:
         with st.expander(f"📖 References — Score: {ref.get('score', 0)}"):
@@ -410,6 +496,7 @@ def show_review(rv, meta=None):
                 st.markdown(f"- ❌ {iss}")
             if ref.get("feedback"):
                 st.info(ref["feedback"])
+
     lq = rv.get("language_quality", {})
     if lq:
         with st.expander(f"✍️ Language & Writing — Score: {lq.get('score', 0)}"):
@@ -425,6 +512,7 @@ def show_review(rv, meta=None):
                     st.markdown(f'  - *"{v}"*')
             if lq.get("feedback"):
                 st.info(lq["feedback"])
+
     if rv.get("strengths"):
         with st.expander("💪 Strengths"):
             for s in rv["strengths"]:
@@ -432,30 +520,41 @@ def show_review(rv, meta=None):
 
     st.divider()
     st.subheader("📥 Download Reports")
+    ws = compute_weighted_score(rv)
+    rec = override_recommendation(ws)
     d1, d2 = st.columns(2)
     with d1:
         try:
-            pdf = generate_full_report(rv, DEFAULT_WEIGHTS, ws, rec, meta=meta)
+            try:
+                pdf = generate_full_report(rv, DEFAULT_WEIGHTS, ws, rec, meta=meta)
+            except TypeError:
+                pdf = generate_full_report(rv, DEFAULT_WEIGHTS, ws, rec)
             fn = f"Review_{rv.get('project_title', 'report')[:30].replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
             st.download_button("📄 Full Review Report (PDF)", pdf, fn, "application/pdf", use_container_width=True, type="primary")
         except Exception as e:
             st.error(f"PDF error: {e}")
     with d2:
         try:
-            card = generate_report_card(rv, DEFAULT_WEIGHTS, ws, rec, meta=meta)
+            try:
+                card = generate_report_card(rv, DEFAULT_WEIGHTS, ws, rec, meta=meta)
+            except TypeError:
+                card = generate_report_card(rv, DEFAULT_WEIGHTS, ws, rec)
             fn2 = f"Card_{rv.get('project_title', 'report')[:30].replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
             st.download_button("🪪 Student Report Card (PDF)", card, fn2, "application/pdf", use_container_width=True)
         except Exception as e:
             st.error(f"Card error: {e}")
 
-# ── API KEY STATUS ──
-if not get_api_key():
-    with st.expander("🔑 Gemini API Key Required", expanded=True):
-        st.session_state["gemini_key"] = st.text_input("Paste Gemini API key", type="password", help="aistudio.google.com/apikey")
-else:
+# ─── API KEY ───
+if get_api_key():
     st.caption("API Ready")
+else:
+    st.warning("⚠️ Gemini API key not found. Add GEMINI_API_KEY to Streamlit Cloud Secrets.")
+    _k = st.text_input("Or paste key here (this session only)", type="password",
+                       help="Get free key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey)")
+    if _k:
+        st.session_state["gemini_key"] = _k
 
-# ── REPORT INFORMATION ──
+# ─── REPORT INFORMATION ───
 st.subheader("📋 Report Information")
 c1, c2, c3, c4 = st.columns(4)
 with c1:
@@ -486,35 +585,36 @@ current_meta = {
     "fulfillment": ff,
 }
 
-# ── SCORING WEIGHTS (READ-ONLY) & EVALUATION RUBRIC ──
-with st.expander("⚖️ Scoring Weights & Evaluation Rubric (Department Criteria)", expanded=True):
-    st.caption("Standard SSIPMT Department of IT evaluation weights (Total: 100%).")
+# ─── SCORING WEIGHTS (READ-ONLY) & RUBRIC ───
+with st.expander("⚖️ Scoring Weights & Evaluation Rubric", expanded=True):
+    st.caption("Department evaluation weights (Total: 100%).")
     wcols = st.columns(7)
     for col, (k, label) in zip(wcols, WEIGHT_INFO.items()):
         with col:
             st.number_input(label, value=DEFAULT_WEIGHTS[k], disabled=True, key=f"w_{k}")
     tot = sum(DEFAULT_WEIGHTS.values())
-    st.success(f"Total Weightage: {tot}% ✓")
+    st.success(f"Total: {tot}% ✓")
 
-    st.markdown("##### 📊 Decision Rubric & Evaluation Criteria")
+    st.markdown("##### 📊 Evaluation Rubric & Decision Criteria")
     st.dataframe(pd.DataFrame(RUBRIC_DATA), hide_index=True, use_container_width=True)
 
 st.divider()
 
-# ── TABS ──
+# ─── TABS ───
 tab1, tab2 = st.tabs(["📋  Single Review", "📦  Batch Review"])
 
 with tab1:
     st.info(f"📌 Maximum **{MAX_PAGES} pages** per report (SSIPMT guideline: 40–{MAX_PAGES} pages). Files exceeding this limit will not be processed.")
-    uploaded = st.file_uploader("Drag and drop PDF or DOCX file here", type=["pdf", "docx"], key="single_upload",
-                                help=f"PDF or DOCX · Max {MAX_PAGES} pages · Text-based PDFs only")
+    uploaded = st.file_uploader("Drag and drop PDF or DOCX file here", type=["pdf", "docx"],
+                                key="single_upload", help=f"PDF or DOCX · Max {MAX_PAGES} pages · Text-based PDFs only")
     if uploaded:
         ca, cb = st.columns([3, 1])
         with ca:
             st.info(f"📁 **{uploaded.name}** — {uploaded.size/1024/1024:.2f} MB")
         with cb:
-            start = st.button("🔍 Start Review", type="primary", use_container_width=True)
-        if start:
+            start_btn = st.button("🔍 Start Review", type="primary", use_container_width=True)
+
+        if start_btn:
             if not sub_name.strip():
                 st.warning("Enter Subject Name above first.")
                 st.stop()
@@ -524,6 +624,7 @@ with tab1:
             if semester is None:
                 st.warning("Select Semester from the dropdown above first.")
                 st.stop()
+
             with st.spinner("Checking document..."):
                 try:
                     fd = extract_file(uploaded)
@@ -531,18 +632,35 @@ with tab1:
                 except Exception as e:
                     st.error(str(e))
                     st.stop()
+
+            with st.expander("🔍 View extracted text sent to AI (verify before reviewing)", expanded=False):
+                st.caption("Exact text the AI reads. NOTE: Diagrams/images are NOT visible — only text is extracted.")
+                st.text_area("First 3000 chars:", fd['text'][:3000], height=200, disabled=True)
+                if len(fd['text']) > 3000:
+                    st.text_area("Last 1000 chars (references section):", fd['text'][-1000:], height=120, disabled=True)
+
             sys_prompt = build_system_prompt(session, sub_name, sub_code, semester, ff)
-            with st.spinner("🤖 AI reviewing... (30–60 seconds)"):
+            with st.spinner("🤖 AI reviewing... (30–90 seconds)"):
                 try:
                     rv = call_gemini(fd, sys_prompt)
                     st.session_state.single_review = rv
                     st.session_state.review_meta = dict(current_meta)
                     st.success("✅ Review complete!")
                 except Exception as e:
-                    if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                        st.error("⚠️ Gemini free quota reached. Wait 1 minute and try again, or try tomorrow when daily quota resets.")
+                    err = str(e)
+                    if "429" in err or "RESOURCE_EXHAUSTED" in err:
+                        st.warning("⏳ Quota limit hit — waiting 60 seconds then retrying automatically...")
+                        time.sleep(60)
+                        try:
+                            rv = call_gemini(fd, sys_prompt)
+                            st.session_state.single_review = rv
+                            st.session_state.review_meta = dict(current_meta)
+                            st.success("✅ Review complete!")
+                        except Exception:
+                            st.error("⚠️ Gemini quota exhausted for today. Try again tomorrow or use a different API key.")
                     else:
-                        st.error(f"Review failed: {e}")
+                        st.error(f"Review failed: {err}")
+
     if st.session_state.single_review:
         if st.button("🔄 Review Another Report", type="secondary"):
             st.session_state.single_review = None
@@ -551,7 +669,7 @@ with tab1:
         show_review(st.session_state.single_review, st.session_state.get("review_meta") or current_meta)
 
 with tab2:
-    st.info(f"📌 Each file must be up to **{MAX_PAGES} pages** (SSIPMT guideline: 40–{MAX_PAGES} pages). Files exceeding this limit are skipped automatically.")
+    st.info(f"📌 Each file must be under **{MAX_PAGES} pages** (SSIPMT guideline: 40–{MAX_PAGES} pages). Files exceeding this limit will not be processed.")
     batch_files = st.file_uploader("Drag and drop multiple PDF or DOCX files here",
                                    type=["pdf", "docx"], accept_multiple_files=True, key="batch_upload")
     if batch_files:
@@ -593,9 +711,9 @@ with tab2:
         for r in st.session_state.batch_results:
             if r["error"]:
                 rows.append({
-                    "File": r["file"], "Students": "—", "Title": f"ERROR: {r['error'][:50]}", "Score": 0,
-                    "Format": 0, "Front Matter": 0, "Chapters": 0, "Technical": 0, "Abstract": 0, "References": 0, "Language": 0,
-                    "Recommendation": "ERROR"
+                    "File": r["file"], "Students": "—", "Title": f"ERROR: {r['error'][:50]}",
+                    "Score": 0, "Format": 0, "Front Matter": 0, "Technical": 0,
+                    "Abstract": 0, "References": 0, "Language": 0, "Recommendation": "ERROR"
                 })
             else:
                 rv = r["review"]
@@ -606,12 +724,11 @@ with tab2:
                     "Score": r["score"],
                     "Format": rv.get("format_compliance", {}).get("score", 0),
                     "Front Matter": rv.get("front_matter", {}).get("score", 0),
-                    "Chapters": get_chapters_avg(rv),
                     "Technical": rv.get("technical_elements", {}).get("score", 0),
                     "Abstract": rv.get("abstract", {}).get("score", 0),
                     "References": rv.get("references", {}).get("score", 0),
                     "Language": rv.get("language_quality", {}).get("score", 0),
-                    "Recommendation": override_recommendation(r["score"]).replace("_", " "),
+                    "Recommendation": override_recommendation(r["score"]).replace("_", " ")
                 })
         df = pd.DataFrame(rows).sort_values("Score", ascending=False)
         st.dataframe(df, hide_index=True, use_container_width=True)
@@ -621,7 +738,10 @@ with tab2:
                                f"Batch_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv", use_container_width=True)
         with c2:
             try:
-                cmp = generate_comparison_table(st.session_state.batch_results, DEFAULT_WEIGHTS, meta=active_meta)
+                try:
+                    cmp = generate_comparison_table(st.session_state.batch_results, DEFAULT_WEIGHTS, meta=active_meta)
+                except TypeError:
+                    cmp = generate_comparison_table(st.session_state.batch_results, DEFAULT_WEIGHTS)
                 st.download_button("📄 Download PDF", cmp, f"Batch_{datetime.now().strftime('%Y%m%d')}.pdf",
                                    "application/pdf", use_container_width=True, type="primary")
             except Exception as e:
