@@ -15,6 +15,7 @@ from pdf_generator import generate_full_report, generate_report_card, generate_c
 load_dotenv()
 
 MAX_PAGES = 150
+MAX_CHARS = 400000   # about 100k tokens; Gemini 2.5 Flash accepts up to 1M, so the whole report can be sent
 
 st.set_page_config(page_title="SSIPMT Thesis Reviewer", page_icon="🎓",
                    layout="wide", initial_sidebar_state="collapsed")
@@ -248,7 +249,7 @@ def count_pdf_pages(pdf_bytes):
     doc.close()
     return n
 
-def extract_text_from_pdf(pdf_bytes, max_chars=25000):
+def extract_text_from_pdf(pdf_bytes, max_chars=MAX_CHARS):
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     total = len(doc)
     front_end = int(total * 0.75)
@@ -281,7 +282,7 @@ def extract_file(uploaded_file):
         est_pages = len(text.split()) // 300
         if est_pages > MAX_PAGES:
             raise ValueError(f"Document estimated at ~{est_pages} pages. Maximum allowed is **{MAX_PAGES} pages** (SSIPMT guideline: 40–{MAX_PAGES} pages). Files exceeding this limit will not be processed.")
-        return {"text": text[:25000], "name": uploaded_file.name, "pages": est_pages}
+        return {"text": text[:MAX_CHARS], "name": uploaded_file.name, "pages": est_pages}
     raise ValueError("Upload PDF or DOCX only.")
 
 # OpenAI-compatible client for Gemini — more reliable than google-genai SDK
