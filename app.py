@@ -10,6 +10,7 @@ import pandas as pd
 import fitz
 from dotenv import load_dotenv
 from datetime import datetime
+from format_facts import docx_format_facts, pdf_format_facts
 from pdf_generator import generate_full_report, generate_report_card, generate_comparison_table
 
 load_dotenv()
@@ -125,6 +126,8 @@ RULE 6 — OVERALL SCORE (be PESSIMISTIC):
 - 25-49: Several missing chapters, major structural problems
 - 0-24: Critical failures throughout
 WHEN UNCERTAIN: score LOWER, not higher.
+
+FORMAT FACTS RULE: If a block named VERIFIED FORMAT FACTS is present, it was measured by software from the real file and is authoritative for header text, page setup, margins, borders, fonts, line spacing, caption position, algorithm boxes and image counts/colour. Use it instead of assuming these items are missing because they are invisible in plain text. Judge them against the SSIPMT guidelines, and still penalise any real deviation shown there.
 
 CRITICAL OUTPUT RULES:
 - Return ONLY a valid JSON object, nothing else before or after
@@ -273,7 +276,11 @@ def extract_file(uploaded_file):
         text = extract_text_from_pdf(raw)
         if not text.strip():
             raise ValueError("Could not extract text. PDF may be scanned. Try DOCX format.")
-        return {"text": text, "name": uploaded_file.name, "pages": pages}
+        try:
+            facts = pdf_format_facts(raw)
+        except Exception:
+            facts = ""
+        return {"text": text, "name": uploaded_file.name, "pages": pages, "facts": facts}
     elif name.endswith(".docx"):
         result = mammoth.extract_raw_text(io.BytesIO(raw))
         text = result.value
@@ -282,7 +289,11 @@ def extract_file(uploaded_file):
         est_pages = len(text.split()) // 300
         if est_pages > MAX_PAGES:
             raise ValueError(f"Document estimated at ~{est_pages} pages. Maximum allowed is **{MAX_PAGES} pages** (SSIPMT guideline: 40–{MAX_PAGES} pages). Files exceeding this limit will not be processed.")
-        return {"text": text[:MAX_CHARS], "name": uploaded_file.name, "pages": est_pages}
+        try:
+            facts = docx_format_facts(raw)
+        except Exception:
+            facts = ""
+        return {"text": text[:MAX_CHARS], "name": uploaded_file.name, "pages": est_pages, "facts": facts}
     raise ValueError("Upload PDF or DOCX only.")
 
 # OpenAI-compatible client for Gemini — more reliable than google-genai SDK
@@ -327,7 +338,9 @@ def call_gemini(file_data, system_prompt):
         st.stop()
     client = make_gemini_client(api_key)
     prompt = (f"B.Tech Report ({file_data['name']}, ~{file_data.get('pages','?')} pages):\n\n"
-              f"{file_data['text']}\n\nReview this report strictly. Return ONLY the JSON object, nothing else.")
+              f"{file_data['text']}\n\n"
+              + (f"[=== VERIFIED FORMAT FACTS read directly from the file (headers, margins, fonts, captions, algorithm boxes, images) ===]\n{file_data['facts']}\n[=== END FORMAT FACTS ===]\n\n" if file_data.get('facts') else "")
+              + f"Review this report strictly. Return ONLY the JSON object, nothing else.")
 
     last_error = None
     for model in GEMINI_MODELS:
