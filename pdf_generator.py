@@ -15,6 +15,13 @@ WEIGHT_NAMES = {
     "references": "References", "language": "Language & Writing",
 }
 
+RUBRIC_ROWS = [
+    ("APPROVED", ">= 85", "Meets all SSIPMT formatting, chapter, technical, and reference guidelines. Ready for submission."),
+    ("MINOR REVISION", "75 - 84", "Technically sound; requires minor formatting, caption, abstract, or citation corrections."),
+    ("MAJOR REVISION", "40 - 74", "Significant gaps in chapters, technical diagrams/testing, or references. Needs re-review."),
+    ("REJECTED", "< 40", "Fails baseline SSIPMT requirements (missing core sections or placeholder text). Complete rework."),
+]
+
 _R = {
     '\u2014': '-', '\u2013': '-', '\u2012': '-', '\u2011': '-', '\u2010': '-',
     '\u2026': '...', '\u201c': '"', '\u201d': '"', '\u2018': "'", '\u2019': "'",
@@ -55,6 +62,10 @@ def rec_bg(rec):
         "APPROVED": (220, 252, 231), "MINOR_REVISION": (219, 234, 254),
         "MAJOR_REVISION": (254, 215, 170), "REJECTED": (254, 226, 226)
     }.get(rec, (243, 244, 246))
+
+def _ch_avg(review):
+    chs = review.get("chapters", [])
+    return round(sum(c.get("score", 0) for c in chs) / len(chs)) if chs else 0
 
 class BasePDF(FPDF):
     def __init__(self, session="2026-27"):
@@ -112,6 +123,27 @@ class BasePDF(FPDF):
         self.multi_cell(0, 4, safe("- " + str(text)))
         self.set_text_color(0, 0, 0)
 
+    def rubric_table(self):
+        self.set_font("Helvetica", "B", 7)
+        self.set_fill_color(30, 58, 138)
+        self.set_text_color(255, 255, 255)
+        self.cell(32, 5, "Decision", border=1, fill=True)
+        self.cell(18, 5, "Score", border=1, fill=True, align="C")
+        self.cell(0, 5, "Evaluation Criteria", border=1, fill=True, ln=True)
+        self.set_text_color(0, 0, 0)
+        for idx, (dec_lbl, rng, crit) in enumerate(RUBRIC_ROWS):
+            key = dec_lbl.replace(" ", "_")
+            r, g, b = rec_color(key)
+            self.set_fill_color(255, 255, 255) if idx % 2 == 0 else self.set_fill_color(249, 250, 251)
+            self.set_font("Helvetica", "B", 7)
+            self.set_text_color(r, g, b)
+            self.cell(32, 5, safe(dec_lbl), border=1, fill=True)
+            self.set_text_color(0, 0, 0)
+            self.set_font("Helvetica", "B", 7)
+            self.cell(18, 5, safe(rng), border=1, fill=True, align="C")
+            self.set_font("Helvetica", "", 6.5)
+            self.cell(0, 5, safe(crit), border=1, fill=True, ln=True)
+
 
 def generate_full_report(review: dict, weights: dict, weighted_score: int, recommendation: str = None, meta: dict = None) -> bytes:
     meta = meta or {}
@@ -153,7 +185,7 @@ def generate_full_report(review: dict, weights: dict, weighted_score: int, recom
         pdf.kv(k, str(v)[:95], fill=(i % 2 == 0))
 
     # ── Score Summary ──
-    pdf.ln(4)
+    pdf.ln(3)
     pdf.sec("Score Summary")
 
     rb = rec_bg(rec)
@@ -175,19 +207,13 @@ def generate_full_report(review: dict, weights: dict, weighted_score: int, recom
     pdf.set_text_color(0, 0, 0)
     pdf.ln(2)
 
-    pdf.set_font("Helvetica", "I", 7)
-    pdf.set_text_color(100, 100, 100)
-    pdf.cell(0, 4, "Score thresholds:  >= 85 = APPROVED  |  75-84 = MINOR REVISION  |  40-74 = MAJOR REVISION  |  < 40 = REJECTED", ln=True)
-    pdf.set_text_color(0, 0, 0)
-    pdf.ln(2)
-
     pdf.set_fill_color(239, 246, 255)
     pdf.set_font("Helvetica", "I", 8)
     pdf.multi_cell(0, 4, safe(review.get("executive_summary", "")), border=1, fill=True)
-    pdf.ln(3)
+    pdf.ln(2)
 
-    # ── Dimension Scores ──
-    pdf.sec("Dimension Score Breakdown")
+    # ── Dimension Scores (All 7 dimensions = 100%) ──
+    pdf.sec("Dimension Score Breakdown & Weightage (Total: 100%)")
     pdf.set_font("Helvetica", "B", 8)
     pdf.set_fill_color(30, 58, 138)
     pdf.set_text_color(255, 255, 255)
@@ -196,9 +222,11 @@ def generate_full_report(review: dict, weights: dict, weighted_score: int, recom
     pdf.ln()
     pdf.set_text_color(0, 0, 0)
 
+    ch_avg = _ch_avg(review)
     dim_data = [
         ("Format Compliance",  review.get("format_compliance", {}).get("score", 0),  weights.get("format", 15)),
         ("Front Matter",       review.get("front_matter", {}).get("score", 0),        weights.get("front_matter", 10)),
+        ("Chapter Content",    ch_avg,                                                weights.get("chapters", 25)),
         ("Technical Elements", review.get("technical_elements", {}).get("score", 0), weights.get("technical", 20)),
         ("Abstract Quality",   review.get("abstract", {}).get("score", 0),            weights.get("abstract", 5)),
         ("References",         review.get("references", {}).get("score", 0),          weights.get("references", 15)),
@@ -213,7 +241,12 @@ def generate_full_report(review: dict, weights: dict, weighted_score: int, recom
         assess = "Good" if score >= 80 else ("Needs improvement" if score >= 60 else "Significant work required")
         pdf.set_font("Helvetica", "", 7)
         pdf.cell(0, 5, safe(assess), border=1, fill=True, ln=True)
-    pdf.ln(3)
+    pdf.ln(2)
+
+    # ── Decision Rubric Table ──
+    pdf.sec("Decision Rubric & Evaluation Criteria")
+    pdf.rubric_table()
+    pdf.ln(2)
 
     # ── Issues ──
     ci = review.get("critical_issues", [])
@@ -360,15 +393,15 @@ def generate_report_card(review: dict, weights: dict, weighted_score: int, recom
     rb = rec_bg(rec)
     date_str = datetime.now().strftime("%d %B %Y")
 
-    pdf.ln(2)
+    pdf.ln(1)
     pdf.set_font("Helvetica", "B", 14)
     pdf.set_text_color(30, 58, 138)
-    pdf.cell(0, 9, "STUDENT REVIEW REPORT CARD", align="C", ln=True)
+    pdf.cell(0, 8, "STUDENT REVIEW REPORT CARD", align="C", ln=True)
     pdf.set_font("Helvetica", "", 8)
     pdf.set_text_color(100, 100, 100)
     pdf.cell(0, 5, safe(f"Session: {session}  |  {sem_lbl}  |  Subject: {sub_name} ({sub_code})  |  {date_str}"), align="C", ln=True)
     pdf.set_text_color(0, 0, 0)
-    pdf.ln(3)
+    pdf.ln(2)
 
     pdf.set_fill_color(239, 246, 255)
     pdf.set_font("Helvetica", "B", 9)
@@ -376,25 +409,25 @@ def generate_report_card(review: dict, weights: dict, weighted_score: int, recom
     pdf.set_font("Helvetica", "", 8)
     pdf.cell(0, 5, safe(f"Student(s): {', '.join(review.get('student_names', ['-']))}   |   Guide: {review.get('guide_name', '-')}"), border="B", ln=True)
     pdf.cell(0, 5, safe(f"Academic Session: {session}   |   Semester: {sem_lbl}   |   Subject: {sub_name} ({sub_code})"), border="B", ln=True)
-    pdf.ln(3)
+    pdf.ln(2)
 
     # Score + Recommendation
     pdf.set_fill_color(30, 58, 138)
     pdf.set_text_color(255, 255, 255)
-    pdf.set_font("Helvetica", "B", 30)
-    pdf.cell(38, 24, safe(str(weighted_score)), border=1, fill=True, align="C")
+    pdf.set_font("Helvetica", "B", 28)
+    pdf.cell(38, 22, safe(str(weighted_score)), border=1, fill=True, align="C")
     pdf.set_fill_color(*rb)
     pdf.set_text_color(*rc)
     pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(75, 24, safe(rec.replace("_", " ")), border=1, fill=True, align="C")
+    pdf.cell(75, 22, safe(rec.replace("_", " ")), border=1, fill=True, align="C")
     pdf.set_fill_color(248, 250, 252)
     pdf.set_text_color(70, 70, 70)
     pdf.set_font("Helvetica", "", 8)
-    pdf.cell(0, 24, safe(f"  Score: {weighted_score}/100\n  AI raw: {review.get('overall_score', 0)}/100\n  Thresholds: >=85 Approved, >=75 Minor,\n  >=40 Major, <40 Rejected"), border=1, fill=True, ln=True)
+    pdf.cell(0, 22, safe(f"  Score: {weighted_score}/100\n  AI raw: {review.get('overall_score', 0)}/100\n  Thresholds: >=85 Approved, 75-84 Minor,\n  40-74 Major, <40 Rejected"), border=1, fill=True, ln=True)
     pdf.set_text_color(0, 0, 0)
-    pdf.ln(3)
+    pdf.ln(2)
 
-    # Dimension table
+    # Dimension table (All 7 dimensions = 100%)
     pdf.set_font("Helvetica", "B", 8)
     pdf.set_fill_color(30, 58, 138)
     pdf.set_text_color(255, 255, 255)
@@ -403,9 +436,11 @@ def generate_report_card(review: dict, weights: dict, weighted_score: int, recom
     pdf.ln()
     pdf.set_text_color(0, 0, 0)
 
+    ch_avg = _ch_avg(review)
     dims = [
         ("Format Compliance",  review.get("format_compliance", {}).get("score", 0),  weights.get("format", 15)),
         ("Front Matter",       review.get("front_matter", {}).get("score", 0),        weights.get("front_matter", 10)),
+        ("Chapter Content",    ch_avg,                                                weights.get("chapters", 25)),
         ("Technical Elements", review.get("technical_elements", {}).get("score", 0), weights.get("technical", 20)),
         ("Abstract Quality",   review.get("abstract", {}).get("score", 0),            weights.get("abstract", 5)),
         ("References",         review.get("references", {}).get("score", 0),          weights.get("references", 15)),
@@ -420,36 +455,44 @@ def generate_report_card(review: dict, weights: dict, weighted_score: int, recom
         st2 = "Good - meets standard" if score >= 80 else ("Needs improvement" if score >= 60 else "Significant revision required")
         pdf.set_font("Helvetica", "", 7)
         pdf.cell(62, 5, safe(st2), border=1, fill=True, ln=True)
-    pdf.ln(3)
+    pdf.ln(2)
+
+    # Decision Rubric Table
+    pdf.set_font("Helvetica", "B", 8)
+    pdf.set_text_color(30, 58, 138)
+    pdf.cell(0, 5, "Evaluation & Decision Rubric:", ln=True)
+    pdf.set_text_color(0, 0, 0)
+    pdf.rubric_table()
+    pdf.ln(2)
 
     # Top 5 actions
     pal = review.get("priority_action_list", [])[:5]
     if pal:
-        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_font("Helvetica", "B", 8.5)
         pdf.set_text_color(30, 58, 138)
-        pdf.cell(0, 6, "Priority Actions for Student:", ln=True)
+        pdf.cell(0, 5, "Priority Actions for Student:", ln=True)
         pdf.set_text_color(0, 0, 0)
         for a in pal:
             sev = a.get("severity", "")
             sc2 = {"CRITICAL": (220, 38, 38), "MAJOR": (234, 88, 12), "MINOR": (37, 99, 235)}.get(sev, (0, 0, 0))
             bg2 = {"CRITICAL": (254, 242, 242), "MAJOR": (255, 247, 237), "MINOR": (239, 246, 255)}.get(sev, (249, 250, 251))
             pdf.set_fill_color(*bg2)
-            pdf.set_font("Helvetica", "B", 8)
+            pdf.set_font("Helvetica", "B", 7.5)
             pdf.set_text_color(*sc2)
             pdf.cell(26, 5, safe(f"{a['priority']}. [{sev}]"), border="L", fill=True)
             pdf.set_text_color(0, 0, 0)
-            pdf.set_font("Helvetica", "", 8)
+            pdf.set_font("Helvetica", "", 7.5)
             pdf.cell(0, 5, safe(str(a.get("action", ""))[:85] + " - " + str(a.get("location", ""))), border="B", fill=True, ln=True)
-    pdf.ln(5)
+    pdf.ln(4)
 
     pdf.set_draw_color(180, 180, 180)
     pdf.line(pdf.l_margin, pdf.get_y(), 210 - pdf.r_margin, pdf.get_y())
-    pdf.ln(3)
-    pdf.set_font("Helvetica", "", 9)
+    pdf.ln(2)
+    pdf.set_font("Helvetica", "", 8.5)
     pdf.cell(80, 5, "Reviewer:", ln=False)
     pdf.cell(70, 5, "Dept. of IT, SSIPMT Raipur", ln=False)
     pdf.cell(0, 5, safe(f"Date: {date_str}"), ln=True)
-    pdf.ln(10)
+    pdf.ln(8)
     pdf.cell(80, 0, "_" * 32, ln=False)
     pdf.cell(70, 0, "_" * 28, ln=False)
     pdf.cell(0, 0, "_" * 14, ln=True)
@@ -468,8 +511,7 @@ def generate_report_card(review: dict, weights: dict, weighted_score: int, recom
 def _ws(review, weights):
     wt = weights or {}
     total = sum(wt.values()) or 1
-    chs = review.get("chapters", [])
-    ch_avg = (sum(c.get("score", 0) for c in chs) / len(chs)) if chs else 0
+    ch_avg = _ch_avg(review)
     dim = {
         "format": review.get("format_compliance", {}).get("score", 0),
         "front_matter": review.get("front_matter", {}).get("score", 0),
@@ -500,18 +542,21 @@ def generate_comparison_table(batch_results: list, weights: dict, meta: dict = N
     done = [r for r in batch_results if not r.get("error")]
     pdf.cell(0, 5, safe(f"Session: {session}  |  {sem_lbl}  |  Subject: {sub_name} ({sub_code})  |  Generated {date_str} ({len(done)} report(s))"), align="C", ln=True)
     pdf.set_text_color(0, 0, 0)
-    pdf.ln(4)
+    pdf.ln(3)
 
     wt_note = "Weights: " + " | ".join(f"{WEIGHT_NAMES[k]}={v}%" for k, v in weights.items() if k in WEIGHT_NAMES)
     pdf.set_font("Helvetica", "I", 7)
     pdf.set_fill_color(239, 246, 255)
     pdf.multi_cell(0, 4, safe(wt_note), border=1, fill=True)
+    pdf.ln(2)
+
+    pdf.rubric_table()
     pdf.ln(3)
 
     pdf.set_font("Helvetica", "B", 7)
     pdf.set_fill_color(30, 58, 138)
     pdf.set_text_color(255, 255, 255)
-    for hdr, w in [("#", 6), ("File", 38), ("Student(s)", 36), ("Title", 36), ("Score", 12), ("Fmt", 9), ("FM", 8), ("Tech", 9), ("Abs", 8), ("Ref", 8), ("Lang", 8)]:
+    for hdr, w in [("#", 6), ("File", 34), ("Student(s)", 34), ("Title", 34), ("Score", 11), ("Fmt", 8), ("FM", 7), ("Ch", 8), ("Tech", 8), ("Abs", 7), ("Ref", 7), ("Lang", 6)]:
         pdf.cell(w, 6, safe(hdr), border=1, fill=True, align="C" if w < 15 else "L")
     pdf.ln()
     pdf.set_text_color(0, 0, 0)
@@ -521,22 +566,30 @@ def generate_comparison_table(batch_results: list, weights: dict, meta: dict = N
             pdf.set_fill_color(254, 226, 226)
             pdf.set_font("Helvetica", "I", 7)
             pdf.cell(6, 5, safe(str(i + 1)), border=1, fill=True, align="C")
-            pdf.cell(38, 5, safe(r["file"][:22]), border=1, fill=True)
+            pdf.cell(34, 5, safe(r["file"][:20]), border=1, fill=True)
             pdf.cell(0, 5, safe("ERROR: " + str(r.get("error", ""))[:55]), border=1, fill=True, ln=True)
             continue
         rv = r["review"]
         ws = _ws(rv, weights)
+        ch_avg = _ch_avg(rv)
         pdf.set_fill_color(255, 255, 255) if i % 2 == 0 else pdf.set_fill_color(249, 250, 251)
         pdf.set_font("Helvetica", "B", 7)
         pdf.cell(6, 5, safe(str(i + 1)), border=1, fill=True, align="C")
         pdf.set_font("Helvetica", "", 7)
-        pdf.cell(38, 5, safe(r["file"][:22]), border=1, fill=True)
-        pdf.cell(36, 5, safe(", ".join(rv.get("student_names", ["-"]))[:22]), border=1, fill=True)
-        pdf.cell(36, 5, safe(str(rv.get("project_title", ""))[:22]), border=1, fill=True)
-        pdf.sc_cell(ws, 12, 5)
-        for k in ["format_compliance", "front_matter", "technical_elements", "abstract", "references", "language_quality"]:
-            s2 = rv.get(k, {}).get("score", 0)
-            w2 = [9, 8, 9, 8, 8, 8][["format_compliance", "front_matter", "technical_elements", "abstract", "references", "language_quality"].index(k)]
+        pdf.cell(34, 5, safe(r["file"][:20]), border=1, fill=True)
+        pdf.cell(34, 5, safe(", ".join(rv.get("student_names", ["-"]))[:20]), border=1, fill=True)
+        pdf.cell(34, 5, safe(str(rv.get("project_title", ""))[:20]), border=1, fill=True)
+        pdf.sc_cell(ws, 11, 5)
+        scores_and_widths = [
+            (rv.get("format_compliance", {}).get("score", 0), 8),
+            (rv.get("front_matter", {}).get("score", 0), 7),
+            (ch_avg, 8),
+            (rv.get("technical_elements", {}).get("score", 0), 8),
+            (rv.get("abstract", {}).get("score", 0), 7),
+            (rv.get("references", {}).get("score", 0), 7),
+            (rv.get("language_quality", {}).get("score", 0), 6),
+        ]
+        for s2, w2 in scores_and_widths:
             pdf.sc_cell(s2, w2, 5)
         pdf.ln()
 
