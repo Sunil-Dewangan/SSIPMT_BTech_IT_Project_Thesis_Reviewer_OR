@@ -5,9 +5,9 @@ Developed by Sunil Kumar Dewangan
 """
 
 import streamlit as st
-from google import genai
-from google.genai import types
+from openai import OpenAI
 import json
+from json_repair import repair_json
 import io
 import os
 import time
